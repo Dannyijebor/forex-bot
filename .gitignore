@@ -11,3 +11,4 @@ signals.csv
 trades.csv
 KILL
 STOP
+# Triggered workflow run
