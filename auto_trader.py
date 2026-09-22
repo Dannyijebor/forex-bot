@@ -25,6 +25,11 @@ LAST_BAR_FILE = Path(".last_traded_bar")
 def log(msg):
     line = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
     print(line, flush=True)
+    try:
+        with open("auto_trader.log", "a") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 def notify(title, content):
