@@ -7,3 +7,4 @@ tickerall
 joblib
 httpx
 websocket-client
+lightgbm>=4.0.0
