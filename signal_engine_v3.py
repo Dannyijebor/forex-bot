@@ -107,6 +107,46 @@ def ensemble_predict(models, x_scaled):
         return 0.60 * p_hgb + 0.40 * p_rf
 
 
+def percentile_threshold(symbol_dir, current_prob,
+                         lookback=500, percentile=95, min_floor=0.40):
+    """
+    Rolling percentile threshold — fires on the top X% of recent probabilities.
+    Adapts to whatever regime the market is currently in.
+
+    Returns: (should_fire: bool, threshold_used: float)
+    """
+    from pathlib import Path
+    import json as _json
+
+    cache_file = Path(symbol_dir) / "recent_probs.json"
+
+    recent = []
+    if cache_file.exists():
+        try:
+            recent = _json.loads(cache_file.read_text())
+        except Exception:
+            recent = []
+
+    # Compute threshold from PAST probabilities (not including current)
+    if len(recent) >= 20:
+        thresh = float(np.percentile(recent[-lookback:], percentile))
+    else:
+        thresh = 0.55   # warmup: need ~20 samples before percentile activates
+
+    # Absolute floor — never fire on garbage even if it's "top 5%"
+    thresh = max(thresh, min_floor)
+
+    # Append current prob for next time
+    recent.append(float(current_prob))
+    recent = recent[-lookback:]
+    try:
+        cache_file.write_text(_json.dumps(recent))
+    except Exception as e:
+        print(f"  Warning: could not save recent_probs for {symbol_dir}: {e}")
+
+    return current_prob >= thresh, thresh
+
+
 def score_all_symbols(pairs_data, models_dir="models"):
     jpy, eur, gbp = pairs_data
     results = []

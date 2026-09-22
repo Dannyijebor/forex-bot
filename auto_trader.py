@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from signal_engine_v2 import fetch_all_pairs
-from signal_engine_v3 import score_all_symbols
+from signal_engine_v3 import score_all_symbols, percentile_threshold
 
 SYMBOL_MAP = {"EURUSD": "EURUSDm", "GBPUSD": "GBPUSDm"}
 PIP_SIZE = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
@@ -118,15 +118,31 @@ def main():
             log("Scoring failed for all symbols.")
             return
 
+        # Apply percentile threshold per symbol
+        qualified = []
         for r in results:
-            log(f"  {r['symbol']}: Prob={r['prob']:.4f}  Close={r['close']:.5f}")
+            should_fire, dyn_thresh = percentile_threshold(
+                f"models/{r['symbol'].lower()}",
+                r["prob"],
+                lookback=500, percentile=95, min_floor=0.40,
+            )
+            r["dyn_thresh"] = dyn_thresh
+            r["qualified"] = should_fire
+            mark = "✓" if should_fire else "✗"
+            log(f"  {r['symbol']}: Prob={r['prob']:.4f}  "
+                f"PctThresh={dyn_thresh:.4f}  {mark}")
 
-        best = max(results, key=lambda r: r["prob"])
+        qualified = [r for r in results if r["qualified"]]
+        if not qualified:
+            log("  No symbol passed percentile threshold.")
+            return
+
+        best = max(qualified, key=lambda r: r["prob"])
         symbol = best["symbol"]
         prob = best["prob"]
         price = best["close"]
         bar_ts = best["timestamp"]
-        log(f"Best: {symbol} @ Prob={prob:.4f}  Close={price:.5f}")
+        log(f"  Best: {symbol} @ Prob={prob:.4f}  Close={price:.5f}")
 
         # 2. Connect to broker (with retry for network blips)
         client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
@@ -211,10 +227,7 @@ def main():
                 log(f"  At daily trade cap ({cfg.MAX_TRADES_PER_DAY}).")
                 return
 
-            # 9. Signal threshold
-            if prob < cfg.SIGNAL_THRESHOLD:
-                log(f"  No signal (prob {prob:.4f} < {cfg.SIGNAL_THRESHOLD}).")
-                return
+            # 9. Signal threshold — handled by percentile_threshold above
 
             # 10. Spread filter
             tickerall_symbol = SYMBOL_MAP.get(symbol, symbol + "m")
