@@ -1,0 +1,9 @@
+dukascopy-python
+pandas
+numpy
+scikit-learn
+python-dotenv
+tickerall
+joblib
+httpx
+websocket-client

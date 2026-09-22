@@ -1,0 +1,38 @@
+name: Trading Bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run trading cycle
+        env:
+          TICKERALL_API_KEY: ${{ secrets.TICKERALL_API_KEY }}
+          EXNESS_LOGIN: ${{ secrets.EXNESS_LOGIN }}
+          EXNESS_PASSWORD: ${{ secrets.EXNESS_PASSWORD }}
+          EXNESS_SERVER: ${{ secrets.EXNESS_SERVER }}
+        run: python auto_trader.py
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trading-logs
+          path: auto_trader.log
+          retention-days: 7

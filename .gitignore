@@ -1,0 +1,13 @@
+.env
+*.log
+*.pyc
+__pycache__/
+*.csv
+*.csv.bak
+.last_traded_bar
+.auto_trader.lock
+archive_10k_run/
+signals.csv
+trades.csv
+KILL
+STOP
