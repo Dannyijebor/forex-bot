@@ -26,6 +26,45 @@ LOCK = Path(".auto_trader.lock")
 LAST_BAR_FILE = Path(".last_traded_bar")
 
 
+def size_by_confidence(prob, cfg):
+    """Scale lot size by model confidence."""
+    if not getattr(cfg, "DYNAMIC_SIZING", False):
+        return cfg.VOLUME
+    base = getattr(cfg, "BASE_VOLUME", 0.1)
+    if prob >= 0.80:
+        mult = 3.0
+    elif prob >= 0.70:
+        mult = 2.0
+    elif prob >= 0.60:
+        mult = 1.5
+    else:
+        mult = 1.0
+    lot = round(base * mult, 2)
+    lot = max(getattr(cfg, "LOT_MIN", 0.01), min(lot, getattr(cfg, "LOT_MAX", 0.5)))
+    return lot
+
+
+def compute_tp_sl(price, atr_frac, pip, cfg):
+    """Return (tp, sl) prices using ATR-based sizing."""
+    if not getattr(cfg, "USE_ATR_SLTP", False):
+        tp = round(price + cfg.TP_PIPS * pip, 5)
+        sl = round(price - cfg.SL_PIPS * pip, 5)
+        return tp, sl
+
+    # ATR fraction × price = ATR in price terms
+    atr_price = atr_frac * price
+    atr_pips = atr_price / pip
+
+    tp_pips = max(cfg.MIN_TP_PIPS,
+                  min(atr_pips * cfg.ATR_TP_MULTIPLIER, cfg.MAX_TP_PIPS))
+    sl_pips = max(cfg.MIN_SL_PIPS,
+                  min(atr_pips * cfg.ATR_SL_MULTIPLIER, cfg.MAX_SL_PIPS))
+
+    tp = round(price + tp_pips * pip, 5)
+    sl = round(price - sl_pips * pip, 5)
+    return tp, sl, tp_pips, sl_pips
+
+
 def log(msg):
     line = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
     print(line, flush=True)
@@ -248,14 +287,29 @@ def main():
 
             # 11. Place order
             pip = PIP_SIZE.get(symbol, 0.01)
-            tp = round(live_price + cfg.TP_PIPS * pip, 5)
-            sl = round(live_price - cfg.SL_PIPS * pip, 5)
-            log(f"  🎯 SIGNAL FIRED ({symbol} prob {prob:.3f}) — BUY @ {live_price} TP={tp} SL={sl}")
+
+            # Dynamic lot size
+            volume = size_by_confidence(prob, cfg)
+
+            # Safety: cap risk at 5% of equity per trade
+            equity_now = acct.account.equity if hasattr(acct, 'account') else 100.0
+            max_risk_usd = equity_now * 0.05
+            sl_pips_for_risk = max(cfg.MIN_SL_PIPS, 2.0)
+            max_lots = max_risk_usd / (sl_pips_for_risk * 10.0)  # approx $10/pip per lot
+            volume = round(min(volume, max_lots), 2)
+            volume = max(volume, cfg.LOT_MIN)
+
+            # ATR-based TP/SL
+            atr_frac = best.get("atr", 0.001)
+            tp, sl, tp_pips, sl_pips = compute_tp_sl(live_price, atr_frac, pip, cfg)
+
+            log(f"  🎯 SIGNAL ({symbol} prob {prob:.3f}) — BUY @ {live_price}")
+            log(f"      Volume={volume}  TP={tp} ({tp_pips:.1f}p)  SL={sl} ({sl_pips:.1f}p)")
 
             try:
                 result = client.orders.place(
                     aid, type="market", symbol=tickerall_symbol, side="BUY",
-                    volume=cfg.VOLUME, stop_loss=sl, take_profit=tp,
+                    volume=volume, stop_loss=sl, take_profit=tp,
                     comment=f"{symbol}-p{prob:.2f}",
                     timeout=90.0,
                 )
@@ -275,7 +329,10 @@ def main():
                 "entry_price": result.price,
                 "tp": tp,
                 "sl": sl,
-                "volume": cfg.VOLUME,
+                "tp_pips": round(tp_pips, 2),
+                "sl_pips": round(sl_pips, 2),
+                "volume": volume,
+                "atr": round(atr_frac, 6),
                 "equity_before": equity,
             })
 

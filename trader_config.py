@@ -10,6 +10,21 @@ TP_PIPS = 10.0
 SL_PIPS = 2.0
 VOLUME = 0.2
 
+# ── Dynamic sizing by confidence ──
+DYNAMIC_SIZING = True
+BASE_VOLUME = 0.1          # 0.1 lots at base confidence
+LOT_MIN = 0.01             # broker minimum
+LOT_MAX = 0.5              # cap to prevent runaway
+
+# ── ATR-based SL/TP ──
+USE_ATR_SLTP = True
+ATR_TP_MULTIPLIER = 1.5    # TP = current ATR × 1.5
+ATR_SL_MULTIPLIER = 0.5    # SL = current ATR × 0.5
+MIN_TP_PIPS = 8.0          # never go tighter than 8 pips
+MIN_SL_PIPS = 2.0          # never tighter than 2 pips
+MAX_TP_PIPS = 25.0         # never wider than 25 pips
+MAX_SL_PIPS = 6.0          # never wider than 6 pips
+
 # Risk limits
 MAX_POSITIONS = 5
 MAX_TRADES_PER_DAY = 100

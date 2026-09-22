@@ -168,6 +168,7 @@ def score_all_symbols(pairs_data, models_dir="models"):
                 "prob": prob,
                 "close": float(df["Close"].iloc[-1]),
                 "timestamp": df.index[-1],
+                "atr": float(df["atr"].iloc[-1]),  # normalized ATR (fraction of price)
             })
         except Exception as e:
             print(f"  {symbol} scoring failed: {e}")
