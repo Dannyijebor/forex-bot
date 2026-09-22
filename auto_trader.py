@@ -163,7 +163,7 @@ def main():
             should_fire, dyn_thresh = percentile_threshold(
                 f"models/{r['symbol'].lower()}",
                 r["prob"],
-                lookback=500, percentile=95, min_floor=0.40,
+                lookback=500, percentile=95, min_floor=0.30,
             )
             r["dyn_thresh"] = dyn_thresh
             r["qualified"] = should_fire
