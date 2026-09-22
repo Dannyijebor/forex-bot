@@ -8,7 +8,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from signal_engine import load_artifacts, compute_features, predict_proba
+from signal_engine_v2 import load_artifacts, fetch_all_pairs, predict_proba
+from feature_engine_v2 import build_features_v2
 import trader_config as cfg
 
 import numpy as np
@@ -104,17 +105,15 @@ def main():
             log("KILL switch active — no trading. Remove KILL file to resume.")
             return
 
-        # 1. Score current bar
+        # 1. Score current bar using v2 multi-pair model
         model, mean, scale, features = load_artifacts("models")
-        bars = fetch_bars()
-        if bars is None:
-            log("Data fetch failed.")
+        jpy, eur, gbp = fetch_all_pairs(days=7)
+        if jpy is None or eur is None or gbp is None:
+            log("Data fetch failed for at least one pair.")
             return
-        df = bars.copy()
-        df.columns = [c.capitalize() for c in df.columns]
-        df = compute_features(df).dropna(subset=features)
+        df = build_features_v2(jpy, eur, gbp).dropna(subset=features)
         if len(df) < 2:
-            log("Insufficient bars.")
+            log("Insufficient bars after features.")
             return
 
         x = df[features].iloc[-1].to_numpy(dtype=np.float64)
