@@ -108,7 +108,7 @@ def ensemble_predict(models, x_scaled):
 
 
 def percentile_threshold(symbol_dir, current_prob,
-                         lookback=500, percentile=95, min_floor=0.30):
+                         lookback=500, percentile=95, min_floor=0.20):
     """
     Rolling percentile threshold — fires on the top X% of recent probabilities.
     Adapts to whatever regime the market is currently in.
@@ -131,7 +131,7 @@ def percentile_threshold(symbol_dir, current_prob,
     if len(recent) >= 20:
         thresh = float(np.percentile(recent[-lookback:], percentile))
     else:
-        thresh = 0.40   # warmup: need ~20 samples before percentile activates
+        thresh = 0.20   # warmup: need ~20 samples before percentile activates
 
     # Absolute floor — never fire on garbage even if it's "top 5%"
     thresh = max(thresh, min_floor)
