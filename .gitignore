@@ -3,6 +3,7 @@
 *.pyc
 __pycache__/
 *.csv
+!trades.csv
 *.csv.bak
 .last_traded_bar
 .auto_trader.lock
