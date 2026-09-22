@@ -7,8 +7,6 @@ __pycache__/
 .last_traded_bar
 .auto_trader.lock
 archive_10k_run/
-signals.csv
-trades.csv
 KILL
 STOP
 # Triggered workflow run

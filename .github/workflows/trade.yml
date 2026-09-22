@@ -44,3 +44,13 @@ jobs:
           name: trading-logs
           path: auto_trader.log
           retention-days: 7
+
+      - name: Commit trades back to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          touch trades.csv
+          git add trades.csv
+          git diff --staged --quiet || git commit -m "Update trades [skip ci]"
+          git push || echo "Nothing to push"
