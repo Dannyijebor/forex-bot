@@ -8,8 +8,11 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from signal_engine_v2 import load_artifacts, fetch_all_pairs, predict_proba
-from feature_engine_v2 import build_features_v2
+from signal_engine_v2 import fetch_all_pairs
+from signal_engine_v3 import score_all_symbols
+
+SYMBOL_MAP = {"EURUSD": "EURUSDm", "GBPUSD": "GBPUSDm"}
+PIP_SIZE = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
 import trader_config as cfg
 
 import numpy as np
@@ -105,22 +108,25 @@ def main():
             log("KILL switch active — no trading. Remove KILL file to resume.")
             return
 
-        # 1. Score current bar using v2 multi-pair model
-        model, mean, scale, features = load_artifacts("models")
-        jpy, eur, gbp = fetch_all_pairs(days=7)
-        if jpy is None or eur is None or gbp is None:
-            log("Data fetch failed for at least one pair.")
+        # 1. Score all symbols
+        pairs = fetch_all_pairs(days=7)
+        if any(p is None for p in pairs):
+            log("Data fetch failed.")
             return
-        df = build_features_v2(jpy, eur, gbp).dropna(subset=features)
-        if len(df) < 2:
-            log("Insufficient bars after features.")
+        results = score_all_symbols(pairs, models_dir="models")
+        if not results:
+            log("Scoring failed for all symbols.")
             return
 
-        x = df[features].iloc[-1].to_numpy(dtype=np.float64)
-        prob = predict_proba(model, (x - mean) / scale)
-        bar_ts = df.index[-1]
-        price = float(df["Close"].iloc[-1])
-        log(f"Bar {bar_ts}  Close {price:.3f}  Prob {prob:.4f}")
+        for r in results:
+            log(f"  {r['symbol']}: Prob={r['prob']:.4f}  Close={r['close']:.5f}")
+
+        best = max(results, key=lambda r: r["prob"])
+        symbol = best["symbol"]
+        prob = best["prob"]
+        price = best["close"]
+        bar_ts = best["timestamp"]
+        log(f"Best: {symbol} @ Prob={prob:.4f}  Close={price:.5f}")
 
         # 2. Connect to broker (with retry for network blips)
         client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
@@ -211,7 +217,8 @@ def main():
                 return
 
             # 10. Spread filter
-            candles = client.candles.get(aid, symbol=cfg.SYMBOL, count=1, timeframe=cfg.TIMEFRAME)
+            tickerall_symbol = SYMBOL_MAP.get(symbol, symbol + "m")
+            candles = client.candles.get(aid, symbol=tickerall_symbol, count=1, timeframe=cfg.TIMEFRAME)
             c = candles[-1]
             spread_pips = (c.close - c.bid) / cfg.PIP if c.bid else 0
             # TickerAll shows spread=0.0 often — use bid vs ask if available
@@ -227,15 +234,16 @@ def main():
                 return
 
             # 11. Place order
-            tp = round(live_price + cfg.TP_PIPS * cfg.PIP, 3)
-            sl = round(live_price - cfg.SL_PIPS * cfg.PIP, 3)
-            log(f"  🎯 SIGNAL FIRED (prob {prob:.3f}) — placing BUY @ {live_price} TP={tp} SL={sl}")
+            pip = PIP_SIZE.get(symbol, 0.01)
+            tp = round(live_price + cfg.TP_PIPS * pip, 5)
+            sl = round(live_price - cfg.SL_PIPS * pip, 5)
+            log(f"  🎯 SIGNAL FIRED ({symbol} prob {prob:.3f}) — BUY @ {live_price} TP={tp} SL={sl}")
 
             try:
                 result = client.orders.place(
-                    aid, type="market", symbol=cfg.SYMBOL, side="BUY",
+                    aid, type="market", symbol=tickerall_symbol, side="BUY",
                     volume=cfg.VOLUME, stop_loss=sl, take_profit=tp,
-                    comment=f"auto-p{prob:.2f}",
+                    comment=f"{symbol}-p{prob:.2f}",
                     timeout=90.0,
                 )
             except Exception as oe:
@@ -247,6 +255,7 @@ def main():
             log_trade({
                 "opened_utc": datetime.now(timezone.utc).isoformat(),
                 "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
+                "symbol": symbol,
                 "prob": round(prob, 4),
                 "ticket": result.ticket,
                 "side": "BUY",
