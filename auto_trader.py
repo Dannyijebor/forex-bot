@@ -1,18 +1,16 @@
 """
-auto_trader.py — Full autonomous signal-to-execution loop.
-Runs every 5 min via cron. Places demo trades when model fires.
-Multiple safeguards prevent runaway trading.
+auto_trader.py — V4: 3-symbol primary + meta ensemble with cross-asset features.
+Runs every 5 min via external cron. Places trade on best meta-qualified symbol.
 """
 import os, sys, time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from signal_engine_v2 import fetch_all_pairs
-from signal_engine_v3 import score_all_symbols, percentile_threshold
-
-SYMBOL_MAP = {"EURUSD": "EURUSDm", "GBPUSD": "GBPUSDm"}
-PIP_SIZE = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
+from signal_engine_v4 import (
+    load_cross_assets, fetch_all_pairs, score_all,
+    META_THRESHOLDS, PIP_SIZES, TICKERALL_SYMBOLS,
+)
 import trader_config as cfg
 
 import numpy as np
@@ -20,63 +18,20 @@ import pandas as pd
 from dotenv import load_dotenv
 from tickerall import Tickerall
 
-load_dotenv(os.path.expanduser("~/Forex_model/.env"))
+load_dotenv(os.path.expanduser("~/forex_model/.env"))
+if not os.getenv("TICKERALL_API_KEY"):
+    load_dotenv(os.path.expanduser("~/forex-bot-clean/.env"))
 
 LOCK = Path(".auto_trader.lock")
 LAST_BAR_FILE = Path(".last_traded_bar")
 
 
-def size_by_confidence(prob, cfg):
-    """Scale lot size by model confidence."""
-    if not getattr(cfg, "DYNAMIC_SIZING", False):
-        return cfg.VOLUME
-    base = getattr(cfg, "BASE_VOLUME", 0.1)
-    if prob >= 0.80:
-        mult = 3.0
-    elif prob >= 0.70:
-        mult = 2.0
-    elif prob >= 0.60:
-        mult = 1.5
-    else:
-        mult = 1.0
-    lot = round(base * mult, 2)
-    lot = max(getattr(cfg, "LOT_MIN", 0.01), min(lot, getattr(cfg, "LOT_MAX", 0.5)))
-    return lot
-
-
-def compute_tp_sl(price, atr_frac, pip, cfg):
-    """Return (tp, sl) prices using ATR-based sizing."""
-    if not getattr(cfg, "USE_ATR_SLTP", False):
-        tp = round(price + cfg.TP_PIPS * pip, 5)
-        sl = round(price - cfg.SL_PIPS * pip, 5)
-        return tp, sl
-
-    # ATR fraction × price = ATR in price terms
-    atr_price = atr_frac * price
-    atr_pips = atr_price / pip
-
-    tp_pips = max(cfg.MIN_TP_PIPS,
-                  min(atr_pips * cfg.ATR_TP_MULTIPLIER, cfg.MAX_TP_PIPS))
-    sl_pips = max(cfg.MIN_SL_PIPS,
-                  min(atr_pips * cfg.ATR_SL_MULTIPLIER, cfg.MAX_SL_PIPS))
-
-    tp = round(price + tp_pips * pip, 5)
-    sl = round(price - sl_pips * pip, 5)
-    return tp, sl, tp_pips, sl_pips
-
-
 def log(msg):
     line = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
     print(line, flush=True)
-    try:
-        with open("auto_trader.log", "a") as f:
-            f.write(line + "\n")
-    except Exception:
-        pass
 
 
 def notify(title, content):
-    # Termux-only notifications. GitHub Actions just prints.
     if os.path.exists("/data/data/com.termux/files/usr/bin/termux-notification"):
         os.system(f'termux-notification --title "{title}" --content "{content}" --priority high')
     else:
@@ -85,19 +40,6 @@ def notify(title, content):
 
 def kill_switch_active():
     return Path(cfg.KILL_FILE).exists()
-
-
-def fetch_bars():
-    import dukascopy_python as dp
-    from dukascopy_python.instruments import INSTRUMENT_FX_MAJORS_USD_JPY
-    end = datetime.now(timezone.utc).replace(tzinfo=None)
-    start = end - timedelta(days=7)
-    df = dp.fetch(
-        instrument=INSTRUMENT_FX_MAJORS_USD_JPY,
-        interval=dp.INTERVAL_MIN_5, offer_side=dp.OFFER_SIDE_BID,
-        start=start, end=end, max_retries=3,
-    )
-    return df.sort_index() if df is not None and len(df) else None
 
 
 def load_todays_trades():
@@ -133,8 +75,27 @@ def close_position(client, aid, ticket, reason):
         return False
 
 
+def size_by_confidence(prob, base=0.10):
+    if prob >= 0.80: mult = 3.0
+    elif prob >= 0.70: mult = 2.0
+    elif prob >= 0.60: mult = 1.5
+    else: mult = 1.0
+    lot = round(base * mult, 2)
+    return max(0.01, min(lot, 0.5))
+
+
+def compute_tp_sl(price, atr_frac, pip, tp_mult=2.0, sl_mult=1.0,
+                  min_tp=8.0, min_sl=4.0, max_tp=25.0, max_sl=10.0):
+    atr_price = atr_frac * price
+    atr_pips = atr_price / pip
+    tp_pips = max(min_tp, min(atr_pips * tp_mult, max_tp))
+    sl_pips = max(min_sl, min(atr_pips * sl_mult, max_sl))
+    return (round(price + tp_pips * pip, 5),
+            round(price - sl_pips * pip, 5),
+            tp_pips, sl_pips)
+
+
 def main():
-    # Lock to prevent overlap
     if LOCK.exists():
         age = time.time() - LOCK.stat().st_mtime
         if age < 240:
@@ -144,46 +105,45 @@ def main():
 
     try:
         if kill_switch_active():
-            log("KILL switch active — no trading. Remove KILL file to resume.")
+            log("KILL switch active — no trading.")
             return
 
-        # 1. Score all symbols
+        # ── Score all symbols ──
+        cross_daily = load_cross_assets()
         pairs = fetch_all_pairs(days=7)
-        if any(p is None for p in pairs):
-            log("Data fetch failed.")
+        if any(p is None for p in pairs.values()):
+            log("Data fetch failed for at least one pair.")
             return
-        results = score_all_symbols(pairs, models_dir="models")
+
+        results = score_all(pairs, cross_daily)
         if not results:
             log("Scoring failed for all symbols.")
             return
 
-        # Apply percentile threshold per symbol
-        qualified = []
         for r in results:
-            should_fire, dyn_thresh = percentile_threshold(
-                f"models/{r['symbol'].lower()}",
-                r["prob"],
-                lookback=500, percentile=95, min_floor=0.20,
-            )
-            r["dyn_thresh"] = dyn_thresh
-            r["qualified"] = should_fire
-            mark = "✓" if should_fire else "✗"
-            log(f"  {r['symbol']}: Prob={r['prob']:.4f}  "
-                f"PctThresh={dyn_thresh:.4f}  {mark}")
+            mark = "✓" if r["qualifies"] else "✗"
+            log(f"  {r['symbol']}: primary={r['primary_prob']:.4f}  "
+                f"meta={r['meta_prob']:.4f}  thr={r['threshold']} {mark}")
 
-        qualified = [r for r in results if r["qualified"]]
-        if not qualified:
-            log("  No symbol passed percentile threshold.")
+        qualifies = [r for r in results if r["qualifies"]]
+        if not qualifies:
+            log("  No symbol passed meta threshold. Skipping trade.")
             return
 
-        best = max(qualified, key=lambda r: r["prob"])
+        # Best meta confidence wins
+        best = max(qualifies, key=lambda r: r["meta_prob"])
         symbol = best["symbol"]
-        prob = best["prob"]
+        prob = best["meta_prob"]
+        primary_prob = best["primary_prob"]
         price = best["close"]
         bar_ts = best["timestamp"]
-        log(f"  Best: {symbol} @ Prob={prob:.4f}  Close={price:.5f}")
+        atr_frac = best["atr"]
+        tickerall_symbol = best["tickerall_symbol"]
+        pip = best["pip_size"]
 
-        # 2. Connect to broker (with retry for network blips)
+        log(f"  Best: {symbol} (meta={prob:.4f}, primary={primary_prob:.4f})")
+
+        # ── Connect to broker ──
         client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
         session = None
         for attempt in range(3):
@@ -196,35 +156,28 @@ def main():
                 )
                 break
             except Exception as e:
-                log(f"  Session start attempt {attempt+1}/3 failed: {e}")
+                log(f"  Session attempt {attempt+1}/3 failed: {e}")
                 time.sleep(5)
         if session is None:
-            log("  All session start attempts failed. Exiting cycle.")
+            log("  All session attempts failed.")
             return
 
-        # HARD SAFETY: refuse live accounts
         if not session.is_demo:
-            log("❌ LIVE ACCOUNT DETECTED — refusing to trade.")
-            notify("BLOCKED", "Attempted trade on LIVE account — aborted.")
+            log("❌ LIVE ACCOUNT — refusing.")
+            notify("BLOCKED", "Attempted live trade — aborted.")
             client.sessions.end(session.account_id)
             return
 
         aid = session.account_id
 
         try:
-            # 3. Get current state
             acct = client.accounts.get(aid)
             equity = acct.account.equity
             balance = acct.account.balance
             open_positions = acct.positions or []
             log(f"  Equity ${equity:.2f}  Positions {len(open_positions)}")
 
-            # 4. Session filter
-            if not in_trading_window():
-                log(f"  Outside trade window ({cfg.TRADE_HOURS_UTC_START}-{cfg.TRADE_HOURS_UTC_END} UTC).")
-                return
-
-            # 5. Manage existing positions — profit-based time exit
+            # Position management: close stale positions
             for p in open_positions:
                 open_time = getattr(p, "open_time", None)
                 if open_time:
@@ -234,101 +187,74 @@ def main():
                         if age_min > cfg.MAX_HOLD_MINUTES:
                             profit = getattr(p, "profit", 0) or 0
                             if profit > 0:
-                                log(f"  Position {p.ticket} age {age_min:.0f}min, profit ${profit:+.2f} — closing (time-profit exit).")
+                                log(f"  Closing {p.ticket} (age {age_min:.0f}min, +${profit:.2f})")
                                 close_position(client, aid, p.ticket, "time_profit")
-                            else:
-                                log(f"  Position {p.ticket} age {age_min:.0f}min, profit ${profit:+.2f} — holding to SL/TP.")
                     except Exception as e:
-                        log(f"  Hold check error: {e}")
+                        log(f"  Hold check: {e}")
 
-            # Re-fetch after possible closes
+            # Re-fetch after closes
             acct = client.accounts.get(aid)
             open_positions = acct.positions or []
             equity = acct.account.equity
 
-            # 6. Position limit
+            # ── Safety limits ──
+            if not in_trading_window():
+                log(f"  Outside window ({cfg.TRADE_HOURS_UTC_START}-{cfg.TRADE_HOURS_UTC_END} UTC).")
+                return
+
             if len(open_positions) >= cfg.MAX_POSITIONS:
-                log(f"  At max positions ({cfg.MAX_POSITIONS}). Skipping entry.")
+                log(f"  At max positions ({cfg.MAX_POSITIONS}).")
                 return
 
-            # 7. Daily loss limit
             today_trades = load_todays_trades()
-            if len(today_trades) > 0 and "pnl_usd" in today_trades.columns:
-                daily_pnl = today_trades["pnl_usd"].fillna(0).sum()
-                loss_pct = -daily_pnl / balance * 100
-                if loss_pct >= cfg.DAILY_LOSS_LIMIT_PCT:
-                    log(f"  Daily loss limit hit ({loss_pct:.2f}%). No more trades today.")
-                    notify("Daily Limit", f"Loss {loss_pct:.1f}% — trading paused today")
-                    return
-
-            # 8. Daily trade count
             if len(today_trades) >= cfg.MAX_TRADES_PER_DAY:
-                log(f"  At daily trade cap ({cfg.MAX_TRADES_PER_DAY}).")
+                log(f"  At daily cap ({cfg.MAX_TRADES_PER_DAY}).")
                 return
 
-            # 9. Signal threshold — handled by percentile_threshold above
-
-            # 10. Spread filter
-            tickerall_symbol = SYMBOL_MAP.get(symbol, symbol + "m")
-            candles = client.candles.get(aid, symbol=tickerall_symbol, count=1, timeframe=cfg.TIMEFRAME)
-            c = candles[-1]
-            spread_pips = (c.close - c.bid) / cfg.PIP if c.bid else 0
-            # TickerAll shows spread=0.0 often — use bid vs ask if available
-            live_price = c.bid if c.bid else c.close
-            if spread_pips > cfg.MAX_SPREAD_PIPS:
-                log(f"  Spread {spread_pips:.2f} pips > limit. Skipping.")
-                return
-
-            # 10.5. Already-traded-this-bar check
+            # Already-traded-this-bar check
             bar_key = str(bar_ts)
             if LAST_BAR_FILE.exists() and LAST_BAR_FILE.read_text().strip() == bar_key:
-                log(f"  Already traded bar {bar_key}. Skipping.")
+                log(f"  Already traded bar {bar_key}.")
                 return
 
-            # 11. Place order
-            pip = PIP_SIZE.get(symbol, 0.01)
+            # ── Place order ──
+            volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
 
-            # Dynamic lot size
-            volume = size_by_confidence(prob, cfg)
-
-            # Safety: cap risk at 5% of equity per trade
-            equity_now = acct.account.equity if hasattr(acct, 'account') else 100.0
-            max_risk_usd = equity_now * 0.05
-            sl_pips_for_risk = max(cfg.MIN_SL_PIPS, 2.0)
-            max_lots = max_risk_usd / (sl_pips_for_risk * 10.0)  # approx $10/pip per lot
-            volume = round(min(volume, max_lots), 2)
+            # Risk cap
+            max_risk_usd = equity * 0.05
+            max_lots_by_risk = max_risk_usd / (4.0 * 10.0)  # 4-pip SL, ~$10/pip/lot
+            volume = round(min(volume, max_lots_by_risk), 2)
             volume = max(volume, cfg.LOT_MIN)
 
-            # ATR-based TP/SL
-            atr_frac = best.get("atr", 0.001)
-            tp, sl, tp_pips, sl_pips = compute_tp_sl(live_price, atr_frac, pip, cfg)
+            tp, sl, tp_pips, sl_pips = compute_tp_sl(price, atr_frac, pip)
 
-            log(f"  🎯 SIGNAL ({symbol} prob {prob:.3f}) — BUY @ {live_price}")
-            log(f"      Volume={volume}  TP={tp} ({tp_pips:.1f}p)  SL={sl} ({sl_pips:.1f}p)")
+            log(f"  🎯 TRADE ({symbol} meta={prob:.3f}) — BUY @ {price:.5f}")
+            log(f"      Vol={volume}  TP={tp} ({tp_pips:.1f}p)  SL={sl} ({sl_pips:.1f}p)")
 
             try:
                 result = client.orders.place(
                     aid, type="market", symbol=tickerall_symbol, side="BUY",
                     volume=volume, stop_loss=sl, take_profit=tp,
-                    comment=f"{symbol}-p{prob:.2f}",
+                    comment=f"{symbol}-m{prob:.2f}",
                     timeout=90.0,
                 )
             except Exception as oe:
                 log(f"  Order placement failed: {type(oe).__name__}: {oe}")
                 return
+
             LAST_BAR_FILE.write_text(bar_key)
             log(f"  Order placed: ticket={result.ticket} status={result.status} price={result.price}")
 
             log_trade({
                 "opened_utc": datetime.now(timezone.utc).isoformat(),
-                "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
                 "symbol": symbol,
-                "prob": round(prob, 4),
+                "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
+                "primary_prob": round(primary_prob, 4),
+                "meta_prob": round(prob, 4),
                 "ticket": result.ticket,
                 "side": "BUY",
                 "entry_price": result.price,
-                "tp": tp,
-                "sl": sl,
+                "tp": tp, "sl": sl,
                 "tp_pips": round(tp_pips, 2),
                 "sl_pips": round(sl_pips, 2),
                 "volume": volume,
@@ -337,7 +263,7 @@ def main():
             })
 
             notify("Trade Placed",
-                   f"BUY {cfg.SYMBOL} @ {result.price:.3f}  P={prob:.2f}  #{result.ticket}")
+                   f"{symbol} BUY @ {result.price} m={prob:.2f} #{result.ticket}")
 
         except Exception as e:
             log(f"  ⚠️ Cycle error: {type(e).__name__}: {e}")

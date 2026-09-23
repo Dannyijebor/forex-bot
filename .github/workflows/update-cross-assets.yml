@@ -1,0 +1,86 @@
+name: Update Cross-Asset Data
+
+on:
+  schedule:
+    # Run daily at 06:30 UTC (after US market close, before London open)
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install yfinance pandas numpy
+
+      - name: Fetch fresh cross-asset data
+        run: |
+          python - << 'PYEOF'
+          import yfinance as yf
+          import pandas as pd
+          import numpy as np
+          from datetime import datetime
+
+          TICKERS = {"dxy":"DX-Y.NYB","us10y":"^TNX","vix":"^VIX","gold":"GC=F","sp500":"^GSPC"}
+          daily = {}
+          for name, ticker in TICKERS.items():
+              try:
+                  d = yf.download(ticker, start="2016-01-01",
+                                  end=datetime.utcnow().strftime("%Y-%m-%d"),
+                                  interval="1d", progress=False, auto_adjust=False)
+                  if d is None or len(d) == 0:
+                      continue
+                  if isinstance(d.columns, pd.MultiIndex):
+                      d.columns = d.columns.get_level_values(0)
+                  daily[name] = d[["Close"]].rename(columns={"Close": f"{name}_close"})
+              except Exception as e:
+                  print(f"  FAIL {name}: {e}")
+
+          daily_df = None
+          for name, d in daily.items():
+              d.index = pd.to_datetime(d.index).tz_localize(None).normalize()
+              daily_df = d if daily_df is None else daily_df.join(d, how="outer")
+          daily_df = daily_df.sort_index().ffill()
+
+          cross = pd.DataFrame(index=daily_df.index)
+          for name in TICKERS.keys():
+              col = f"{name}_close"
+              if col not in daily_df.columns: continue
+              price = daily_df[col]
+              cross[f"{name}_ret_1"] = price.pct_change(1)
+              cross[f"{name}_ret_5"] = price.pct_change(5)
+              ma20 = price.rolling(20).mean()
+              sd20 = price.rolling(20).std()
+              cross[f"{name}_z20"] = (price - ma20) / (sd20 + 1e-12)
+          if "vix_close" in daily_df.columns:
+              cross["vix_level"] = daily_df["vix_close"]
+              cross["vix_pctile_60"] = daily_df["vix_close"].rolling(60).apply(
+                  lambda x: (x.iloc[-1] > x).mean() if len(x) else 0.5)
+          if "dxy_ret_1" in cross.columns:
+              cross["dxy_trend_5v20"] = cross["dxy_ret_5"] - cross["dxy_ret_1"] * 5
+
+          cross_lagged = cross.shift(1)
+          cross_lagged.index = pd.to_datetime(cross_lagged.index).normalize()
+          cross_lagged = cross_lagged.reset_index().rename(columns={"index": "date"})
+          cross_lagged.to_csv("cross_assets_daily.csv", index=False)
+          print(f"Wrote cross_assets_daily.csv: {len(cross_lagged)} rows")
+          PYEOF
+
+      - name: Commit updated cross-asset data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cross_assets_daily.csv
+          git diff --staged --quiet || git commit -m "Update cross-asset data [skip ci]"
+          git push || echo "Nothing to push"
