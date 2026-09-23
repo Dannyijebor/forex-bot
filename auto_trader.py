@@ -1,6 +1,6 @@
-"""auto_trader.py — V5: 3-symbol BUY+SELL meta-labeled trading."""
+"""auto_trader.py — V5: 3-symbol BUY+SELL meta system with safety guards."""
 import os, sys, time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -14,7 +14,9 @@ import pandas as pd
 from dotenv import load_dotenv
 from tickerall import Tickerall
 
-load_dotenv(os.path.expanduser("~/forex_model/.env"))
+load_dotenv(os.path.expanduser("~/Forex_model/.env"))
+if not os.getenv("TICKERALL_API_KEY"):
+    load_dotenv(os.path.expanduser("~/forex_model/.env"))
 if not os.getenv("TICKERALL_API_KEY"):
     load_dotenv(os.path.expanduser("~/forex-bot-clean/.env"))
 
@@ -43,9 +45,12 @@ def load_todays_trades():
     if not p.exists(): return pd.DataFrame()
     df = pd.read_csv(p)
     if df.empty: return df
-    df["opened_utc"] = pd.to_datetime(df["opened_utc"], format="mixed", utc=True)
-    today = datetime.now(timezone.utc).date()
-    return df[df["opened_utc"].dt.date == today]
+    try:
+        df["opened_utc"] = pd.to_datetime(df["opened_utc"], format="mixed", utc=True)
+        today = datetime.now(timezone.utc).date()
+        return df[df["opened_utc"].dt.date == today]
+    except Exception:
+        return pd.DataFrame()
 
 
 def in_trading_window():
@@ -69,12 +74,12 @@ def close_position(client, aid, ticket, reason):
         return False
 
 
-def size_by_confidence(prob, base=0.10):
+def size_by_confidence(prob, base=0.03):
     if prob >= 0.80: mult = 3.0
     elif prob >= 0.70: mult = 2.0
     elif prob >= 0.60: mult = 1.5
     else: mult = 1.0
-    return max(0.01, min(round(base * mult, 2), 0.5))
+    return max(0.01, min(round(base * mult, 2), 0.15))
 
 
 def compute_tp_sl(price, atr_frac, pip, side,
@@ -91,6 +96,48 @@ def compute_tp_sl(price, atr_frac, pip, side,
         tp = round(price - tp_pips * pip, 5)
         sl = round(price + sl_pips * pip, 5)
     return tp, sl, tp_pips, sl_pips
+
+
+def safety_guards_pass(symbol, today_trades, log_fn):
+    """Return True if we're allowed to open a new position on this symbol."""
+    # Global daily cap
+    daily_cap = getattr(cfg, "MAX_TRADES_PER_DAY", 100)
+    if len(today_trades) >= daily_cap:
+        log_fn(f"  Global daily cap ({len(today_trades)}/{daily_cap}).")
+        return False
+
+    # Per-symbol daily cap
+    if "symbol" in today_trades.columns and len(today_trades) > 0:
+        sym_count = (today_trades["symbol"] == symbol).sum()
+        sym_cap = getattr(cfg, "MAX_TRADES_PER_SYMBOL_PER_DAY", 3)
+        if sym_count >= sym_cap:
+            log_fn(f"  Per-symbol cap {symbol} ({sym_count}/{sym_cap}).")
+            return False
+
+    # Hourly cap
+    hourly_cap = getattr(cfg, "MAX_TRADES_PER_HOUR", 2)
+    if "opened_utc" in today_trades.columns and len(today_trades) > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+        recent = today_trades[today_trades["opened_utc"] >= cutoff]
+        if len(recent) >= hourly_cap:
+            log_fn(f"  Hourly cap ({len(recent)}/{hourly_cap}).")
+            return False
+
+    # Loss streak
+    max_streak = getattr(cfg, "MAX_CONSECUTIVE_LOSSES", 3)
+    if "pnl_usd" in today_trades.columns and len(today_trades) > 0:
+        closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
+        streak = 0
+        for pnl in closed["pnl_usd"].iloc[::-1]:
+            if pnl <= 0:
+                streak += 1
+            else:
+                break
+        if streak >= max_streak:
+            log_fn(f"  Loss streak {streak}/{max_streak} - pausing.")
+            return False
+
+    return True
 
 
 def main():
@@ -120,7 +167,9 @@ def main():
         for r in results:
             buy_m = "Y" if r["buy_qualifies"] else "n"
             sell_m = "Y" if r["sell_qualifies"] else "n"
-            log(f"  {r['symbol']}: UP meta={r['meta_up']:.4f} thr={r['thr_up']} {buy_m} | DOWN meta={r['meta_down']:.4f} thr={r['thr_down']} {sell_m}")
+            log(f"  {r['symbol']}: "
+                f"UP p={r['primary_up']:.3f} m={r['meta_up']:.3f}/{r['thr_up']} {buy_m} | "
+                f"DOWN p={r['primary_down']:.3f} m={r['meta_down']:.3f}/{r['thr_down']} {sell_m}")
 
         best = pick_best(results)
         if best is None:
@@ -135,6 +184,11 @@ def main():
         pip = r["pip_size"]
 
         log(f"  Best: {symbol} {side} @ meta={prob:.4f}")
+
+        # Safety check BEFORE connecting
+        today_trades = load_todays_trades()
+        if not safety_guards_pass(symbol, today_trades, log):
+            return
 
         client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
         session = None
@@ -186,19 +240,15 @@ def main():
             equity = acct.account.equity
 
             if not in_trading_window():
-                log(f"  Outside window.")
+                log("  Outside window.")
                 return
             if len(open_positions) >= cfg.MAX_POSITIONS:
-                log(f"  Max positions.")
-                return
-            today_trades = load_todays_trades()
-            if len(today_trades) >= cfg.MAX_TRADES_PER_DAY:
-                log(f"  Daily cap.")
+                log("  Max positions.")
                 return
 
             bar_key = str(bar_ts)
             if LAST_BAR_FILE.exists() and LAST_BAR_FILE.read_text().strip() == bar_key:
-                log(f"  Already traded bar.")
+                log("  Already traded bar.")
                 return
 
             volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)

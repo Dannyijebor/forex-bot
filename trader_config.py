@@ -12,7 +12,6 @@ VOLUME = 0.2
 
 # ── Dynamic sizing by confidence ──
 DYNAMIC_SIZING = True
-BASE_VOLUME = 0.1          # 0.1 lots at base confidence
 LOT_MIN = 0.01             # broker minimum
 LOT_MAX = 0.5              # cap to prevent runaway
 
@@ -44,6 +43,10 @@ KILL_FILE = "KILL"
 TRADES_CSV = "trades.csv"
 
 # === SAFETY GUARDS (added after overnight loss) ===
+
+
+# === SAFETY GUARDS ===
+BASE_VOLUME = 0.03
 MAX_TRADES_PER_SYMBOL_PER_DAY = 3
 MAX_TRADES_PER_HOUR = 2
 MAX_CONSECUTIVE_LOSSES = 3
