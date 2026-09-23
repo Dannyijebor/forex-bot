@@ -163,7 +163,7 @@ def fetch_all_pairs(days=7):
     return {sym: fetch_pair(sym, days) for sym in ["USDJPY", "EURUSD", "GBPUSD"]}
 
 
-def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily):
+def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.0):
     """Score one symbol → returns (buy_signal, sell_signal, details)."""
     try:
         models = load_symbol_models(f"models/{symbol.lower()}_v5")
@@ -201,8 +201,9 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily):
         thr_up = META_THRESHOLDS[symbol]["up"]
         thr_down = META_THRESHOLDS[symbol]["down"]
 
-        buy_ok = (p_up > PRIMARY_THRESHOLD) and (m_up > thr_up)
-        sell_ok = (p_down > PRIMARY_THRESHOLD) and (m_down > thr_down)
+        p_thresh = max(0.20, PRIMARY_THRESHOLD - boost)
+        buy_ok = (p_up > p_thresh) and (m_up > thr_up)
+        sell_ok = (p_down > p_thresh) and (m_down > thr_down)
 
         return {
             "symbol": symbol,
@@ -225,7 +226,7 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily):
         return None
 
 
-def score_all(pairs, cross_daily):
+def score_all(pairs, cross_daily, boost=0.0):
     results = []
     for symbol in ["EURUSD", "GBPUSD", "USDJPY"]:
         primary = pairs.get(symbol)
@@ -236,7 +237,7 @@ def score_all(pairs, cross_daily):
         cross2 = pairs.get(others[1])
         if cross1 is None or cross2 is None:
             continue
-        r = score_symbol(symbol, primary, cross1, cross2, cross_daily)
+        r = score_symbol(symbol, primary, cross1, cross2, cross_daily, boost=boost)
         if r:
             results.append(r)
     return results
