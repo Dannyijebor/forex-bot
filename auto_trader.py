@@ -237,6 +237,51 @@ def manage_positions(client, aid, open_positions):
             log("  Hold check: %s" % e)
 
 
+def reconcile_closed_trades(client, aid):
+    """Fill pnl_usd in trades.csv for tickets that have closed on Exness."""
+    p = Path("trades.csv")
+    if not p.exists():
+        return
+    try:
+        df = pd.read_csv(p)
+    except Exception as e:
+        log("  reconcile: read failed: %s" % e)
+        return
+    if "ticket" not in df.columns or "pnl_usd" not in df.columns:
+        return
+
+    acct = client.accounts.get(aid)
+    open_tickets = {str(x.ticket) for x in (acct.positions or [])}
+
+    mask = df["pnl_usd"].isna() & ~df["ticket"].astype(str).isin(open_tickets)
+    if not mask.any():
+        return
+
+    history = client.history.get(aid) or []
+    pnl_by_ticket = {}
+    for h in history:
+        t = str(getattr(h, "ticket", "") or "")
+        if not t or not getattr(h, "complete", True):
+            continue
+        pnl = float(
+            (getattr(h, "profit", 0) or 0)
+            + (getattr(h, "commission", 0) or 0)
+            + (getattr(h, "swap", 0) or 0)
+        )
+        pnl_by_ticket[t] = pnl_by_ticket.get(t, 0.0) + pnl
+
+    updated = 0
+    for idx in df.index[mask]:
+        t = str(df.at[idx, "ticket"])
+        if t in pnl_by_ticket:
+            df.at[idx, "pnl_usd"] = pnl_by_ticket[t]
+            updated += 1
+
+    if updated:
+        df.to_csv(p, index=False)
+        log("  Reconciled %d closed trade(s) into trades.csv" % updated)
+
+
 def main():
     if LOCK.exists():
         age = time.time() - LOCK.stat().st_mtime
@@ -263,6 +308,12 @@ def main():
             client.sessions.end(session.account_id)
             return
         aid = session.account_id
+
+        # 1b. Reconcile closed trades into trades.csv before anything else
+        try:
+            reconcile_closed_trades(client, aid)
+        except Exception as e:
+            log("  reconcile failed: %s" % e)
 
         # 2. Fetch live bars from MT5
         log("Fetching live MT5 bars...")
