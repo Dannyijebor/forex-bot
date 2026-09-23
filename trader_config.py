@@ -53,5 +53,11 @@ MAX_CONSECUTIVE_LOSSES = 2
 
 # === EXIT RULES (added 2026-09-23) ===
 COLLECTIVE_TP_USD = 10.0      # close all profitable trades if total unrealized >= $10
-PROFIT_TAKE_USD = 3.0         # close individual trade if profit >= $3
-PROFIT_HOLD_MINUTES = 1       # ...after it's been open this long
+
+# === EXIT + ADAPTIVE RULES (2026-09-23) ===
+COLLECTIVE_TP_USD = 10.0
+PROFIT_TAKE_USD = 0.10        # any positive profit
+PROFIT_HOLD_MINUTES = 5       # ...after being open this long
+WIN_STREAK_THRESHOLD = 3      # after N consecutive wins
+WIN_STREAK_LOOSEN = 0.03      # loosen thresholds by this much
+WIN_STREAK_RESET_HOURS = 4    # reset the streak after N hours
