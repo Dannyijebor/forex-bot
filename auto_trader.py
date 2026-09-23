@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from signal_engine_v5 import (
-    load_cross_assets, fetch_all_pairs_biquote, score_all, pick_best,
+    load_cross_assets, fetch_all_pairs_live, score_all, pick_best,
 )
 import trader_config as cfg
 
@@ -315,15 +315,13 @@ def main():
         except Exception as e:
             log("  reconcile failed: %s" % e)
 
-        # 2. Fetch live bars from Biquote (real-time, includes forming bar)
-        log("Fetching live Biquote bars (including forming bar)...")
+        # 2. Fetch live bars from MT5
+        log("Fetching live MT5 bars...")
         cross_daily = load_cross_assets()
-        pairs = fetch_all_pairs_biquote(count=1500, include_forming=True)
-
+        pairs = fetch_all_pairs_live(client, aid, count=1500)
         if any(p is None for p in pairs.values()):
-            log("  Biquote fetch failed for at least one pair.")
+            log("  Live data fetch failed for at least one pair.")
             return
-
         for sym, df in pairs.items():
             if df is not None:
                 log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
