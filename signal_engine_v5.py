@@ -122,6 +122,43 @@ def fetch_pair(instrument_name, days=7):
     return df
 
 
+def fetch_pair_live(client, account_id, symbol, count=1500):
+    """Fetch M5 bars from TickerAll/MT5. Same source as execution."""
+    try:
+        candles = client.candles.get(
+            account_id,
+            symbol=TICKERALL_SYMBOLS[symbol],
+            count=count,
+            timeframe="M5",
+        )
+        if not candles:
+            return None
+        rows = []
+        for c in candles:
+            rows.append({
+                "Date": pd.to_datetime(c.timestamp, unit="s", utc=True),
+                "Open": float(c.open),
+                "High": float(c.high),
+                "Low": float(c.low),
+                "Close": float(c.close),
+                "Volume": float(getattr(c, "tick_volume", 0)),
+            })
+        df = pd.DataFrame(rows).set_index("Date").sort_index()
+        df = df[~df.index.duplicated(keep="last")]
+        return df
+    except Exception as e:
+        print(f"  {symbol} live fetch failed: {type(e).__name__}: {e}")
+        return None
+
+
+def fetch_all_pairs_live(client, account_id, count=1500):
+    """Fetch all 3 pairs from live MT5 broker."""
+    return {
+        sym: fetch_pair_live(client, account_id, sym, count)
+        for sym in ["USDJPY", "EURUSD", "GBPUSD"]
+    }
+
+
 def fetch_all_pairs(days=7):
     return {sym: fetch_pair(sym, days) for sym in ["USDJPY", "EURUSD", "GBPUSD"]}
 

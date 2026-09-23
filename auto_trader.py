@@ -1,11 +1,11 @@
-"""auto_trader.py — V5: 3-symbol BUY+SELL meta system with safety guards."""
+"""auto_trader.py — V5.1: live MT5 data + fill-price stops."""
 import os, sys, time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from signal_engine_v5 import (
-    load_cross_assets, fetch_all_pairs, score_all, pick_best,
+    load_cross_assets, fetch_all_pairs_live, score_all, pick_best,
 )
 import trader_config as cfg
 
@@ -25,15 +25,15 @@ LAST_BAR_FILE = Path(".last_traded_bar")
 
 
 def log(msg):
-    line = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
+    line = "[%s] %s" % (datetime.now(timezone.utc).isoformat(), msg)
     print(line, flush=True)
 
 
 def notify(title, content):
     if os.path.exists("/data/data/com.termux/files/usr/bin/termux-notification"):
-        os.system(f'termux-notification --title "{title}" --content "{content}" --priority high')
+        os.system('termux-notification --title "%s" --content "%s" --priority high' % (title, content))
     else:
-        print(f"[NOTIFY] {title}: {content}")
+        print("[NOTIFY] %s: %s" % (title, content))
 
 
 def kill_switch_active():
@@ -42,9 +42,11 @@ def kill_switch_active():
 
 def load_todays_trades():
     p = Path(cfg.TRADES_CSV)
-    if not p.exists(): return pd.DataFrame()
+    if not p.exists():
+        return pd.DataFrame()
     df = pd.read_csv(p)
-    if df.empty: return df
+    if df.empty:
+        return df
     try:
         df["opened_utc"] = pd.to_datetime(df["opened_utc"], format="mixed", utc=True)
         today = datetime.now(timezone.utc).date()
@@ -67,28 +69,32 @@ def log_trade(row):
 def close_position(client, aid, ticket, reason):
     try:
         r = client.positions.close(aid, ticket=int(ticket))
-        log(f"  Closed {ticket} ({reason}): {r.closed}")
+        log("  Closed %s (%s): %s" % (ticket, reason, r.closed))
         return True
     except Exception as e:
-        log(f"  Close {ticket} failed: {e}")
+        log("  Close %s failed: %s" % (ticket, e))
         return False
 
 
-def size_by_confidence(prob, base=0.03):
-    if prob >= 0.80: mult = 3.0
-    elif prob >= 0.70: mult = 2.0
-    elif prob >= 0.60: mult = 1.5
-    else: mult = 1.0
+def size_by_confidence(prob, base=0.06):
+    if prob >= 0.80:
+        mult = 3.0
+    elif prob >= 0.70:
+        mult = 2.0
+    elif prob >= 0.60:
+        mult = 1.5
+    else:
+        mult = 1.0
     return max(0.01, min(round(base * mult, 2), 0.60))
 
 
 def compute_tp_sl(price, atr_frac, pip, side,
-                  tp_mult=2.0, sl_mult=1.0,
-                  min_tp=8.0, min_sl=4.0, max_tp=25.0, max_sl=10.0):
+                  min_tp=15.0, min_sl=10.0,
+                  max_tp=30.0, max_sl=15.0):
     atr_price = atr_frac * price
     atr_pips = atr_price / pip
-    tp_pips = max(min_tp, min(atr_pips * tp_mult, max_tp))
-    sl_pips = max(min_sl, min(atr_pips * sl_mult, max_sl))
+    tp_pips = max(min_tp, min(atr_pips * 2.0, max_tp))
+    sl_pips = max(min_sl, min(atr_pips * 1.0, max_sl))
     if side == "BUY":
         tp = round(price + tp_pips * pip, 5)
         sl = round(price - sl_pips * pip, 5)
@@ -98,33 +104,28 @@ def compute_tp_sl(price, atr_frac, pip, side,
     return tp, sl, tp_pips, sl_pips
 
 
-def safety_guards_pass(symbol, today_trades, log_fn):
-    """Return True if we're allowed to open a new position on this symbol."""
-    # Global daily cap
+def safety_guards_pass(symbol, today_trades):
     daily_cap = getattr(cfg, "MAX_TRADES_PER_DAY", 100)
     if len(today_trades) >= daily_cap:
-        log_fn(f"  Global daily cap ({len(today_trades)}/{daily_cap}).")
+        log("  Global daily cap (%d/%d)." % (len(today_trades), daily_cap))
         return False
 
-    # Per-symbol daily cap
     if "symbol" in today_trades.columns and len(today_trades) > 0:
         sym_count = (today_trades["symbol"] == symbol).sum()
         sym_cap = getattr(cfg, "MAX_TRADES_PER_SYMBOL_PER_DAY", 3)
         if sym_count >= sym_cap:
-            log_fn(f"  Per-symbol cap {symbol} ({sym_count}/{sym_cap}).")
+            log("  Per-symbol cap %s (%d/%d)." % (symbol, sym_count, sym_cap))
             return False
 
-    # Hourly cap
     hourly_cap = getattr(cfg, "MAX_TRADES_PER_HOUR", 2)
     if "opened_utc" in today_trades.columns and len(today_trades) > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
         recent = today_trades[today_trades["opened_utc"] >= cutoff]
         if len(recent) >= hourly_cap:
-            log_fn(f"  Hourly cap ({len(recent)}/{hourly_cap}).")
+            log("  Hourly cap (%d/%d)." % (len(recent), hourly_cap))
             return False
 
-    # Loss streak
-    max_streak = getattr(cfg, "MAX_CONSECUTIVE_LOSSES", 3)
+    max_streak = getattr(cfg, "MAX_CONSECUTIVE_LOSSES", 2)
     if "pnl_usd" in today_trades.columns and len(today_trades) > 0:
         closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
         streak = 0
@@ -134,42 +135,98 @@ def safety_guards_pass(symbol, today_trades, log_fn):
             else:
                 break
         if streak >= max_streak:
-            log_fn(f"  Loss streak {streak}/{max_streak} - pausing.")
+            log("  Loss streak %d/%d - pausing." % (streak, max_streak))
             return False
 
     return True
+
+
+def open_session():
+    client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
+    for attempt in range(3):
+        try:
+            session = client.sessions.start(
+                broker="mt5", server=os.getenv("EXNESS_SERVER"),
+                account=int(os.getenv("EXNESS_LOGIN")),
+                password=os.getenv("EXNESS_PASSWORD"),
+                terminal_type="MOBILE",
+            )
+            return client, session
+        except Exception as e:
+            log("  Session %d/3 failed: %s" % (attempt + 1, e))
+            time.sleep(5)
+    return None, None
+
+
+def manage_positions(client, aid, open_positions):
+    for p in open_positions:
+        open_time = getattr(p, "open_time", None)
+        if not open_time:
+            continue
+        try:
+            ot = datetime.fromisoformat(open_time.replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - ot).total_seconds() / 60
+            if age_min > cfg.MAX_HOLD_MINUTES:
+                profit = getattr(p, "profit", 0) or 0
+                if profit > 0:
+                    log("  Closing %s (age %.0fmin, +$%.2f)" % (p.ticket, age_min, profit))
+                    close_position(client, aid, p.ticket, "time_profit")
+        except Exception as e:
+            log("  Hold check: %s" % e)
 
 
 def main():
     if LOCK.exists():
         age = time.time() - LOCK.stat().st_mtime
         if age < 240:
-            log(f"Locked ({age:.0f}s).")
+            log("Locked (%.0fs)." % age)
             return
     LOCK.touch()
+
+    client = None
+    aid = None
 
     try:
         if kill_switch_active():
             log("KILL switch active.")
             return
 
-        cross_daily = load_cross_assets()
-        pairs = fetch_all_pairs(days=7)
-        if any(p is None for p in pairs.values()):
-            log("Data fetch failed.")
+        # 1. Open broker session FIRST
+        client, session = open_session()
+        if client is None or session is None:
+            log("All sessions failed.")
             return
+        if not session.is_demo:
+            log("LIVE ACCOUNT - refusing.")
+            client.sessions.end(session.account_id)
+            return
+        aid = session.account_id
 
+        # 2. Fetch live bars from MT5
+        log("Fetching live MT5 bars...")
+        cross_daily = load_cross_assets()
+        pairs = fetch_all_pairs_live(client, aid, count=1500)
+        if any(p is None for p in pairs.values()):
+            log("  Live data fetch failed for at least one pair.")
+            return
+        for sym, df in pairs.items():
+            if df is not None:
+                log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
+
+        # 3. Score all symbols
         results = score_all(pairs, cross_daily)
         if not results:
-            log("No scoring results.")
+            log("  No scoring results.")
             return
 
         for r in results:
             buy_m = "Y" if r["buy_qualifies"] else "n"
             sell_m = "Y" if r["sell_qualifies"] else "n"
-            log(f"  {r['symbol']}: "
-                f"UP p={r['primary_up']:.3f} m={r['meta_up']:.3f}/{r['thr_up']} {buy_m} | "
-                f"DOWN p={r['primary_down']:.3f} m={r['meta_down']:.3f}/{r['thr_down']} {sell_m}")
+            log("  %s: UP p=%.3f m=%.3f/%.2f %s | DOWN p=%.3f m=%.3f/%.2f %s" % (
+                r["symbol"],
+                r["primary_up"], r["meta_up"], r["thr_up"], buy_m,
+                r["primary_down"], r["meta_down"], r["thr_down"], sell_m,
+            ))
 
         best = pick_best(results)
         if best is None:
@@ -183,153 +240,115 @@ def main():
         tickerall_symbol = r["tickerall_symbol"]
         pip = r["pip_size"]
 
-        log(f"  Best: {symbol} {side} @ meta={prob:.4f}")
+        log("  Best: %s %s @ meta=%.4f" % (symbol, side, prob))
 
-        # Safety check BEFORE connecting
+        # 4. Guards
         today_trades = load_todays_trades()
-        if not safety_guards_pass(symbol, today_trades, log):
+        if not safety_guards_pass(symbol, today_trades):
             return
 
-        client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
-        session = None
-        for attempt in range(3):
-            try:
-                session = client.sessions.start(
-                    broker="mt5", server=os.getenv("EXNESS_SERVER"),
-                    account=int(os.getenv("EXNESS_LOGIN")),
-                    password=os.getenv("EXNESS_PASSWORD"),
-                    terminal_type="MOBILE",
-                )
-                break
-            except Exception as e:
-                log(f"  Session {attempt+1}/3 failed: {e}")
-                time.sleep(5)
-        if session is None:
-            log("  All sessions failed.")
+        # 5. Account state
+        acct = client.accounts.get(aid)
+        equity = acct.account.equity
+        open_positions = acct.positions or []
+        log("  Equity $%.2f  Positions %d" % (equity, len(open_positions)))
+
+        # 6. Manage existing
+        manage_positions(client, aid, open_positions)
+        acct = client.accounts.get(aid)
+        open_positions = acct.positions or []
+        equity = acct.account.equity
+
+        # 7. Re-check limits
+        if not in_trading_window():
+            log("  Outside window.")
+            return
+        if len(open_positions) >= cfg.MAX_POSITIONS:
+            log("  Max positions.")
             return
 
-        if not session.is_demo:
-            log("LIVE ACCOUNT - refusing.")
-            client.sessions.end(session.account_id)
+        bar_key = str(bar_ts)
+        if LAST_BAR_FILE.exists() and LAST_BAR_FILE.read_text().strip() == bar_key:
+            log("  Already traded bar.")
             return
 
-        aid = session.account_id
+        # 8. Size and place
+        volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
+        max_risk_usd = equity * 0.02
+        max_lots_by_risk = max_risk_usd / (10.0 * 10.0)
+        volume = round(min(volume, max_lots_by_risk), 2)
+        volume = max(volume, cfg.LOT_MIN)
+
+        log("  SIGNAL %s %s (Dukascopy close=%.5f) meta=%.3f" % (symbol, side, price, prob))
 
         try:
-            acct = client.accounts.get(aid)
-            equity = acct.account.equity
-            open_positions = acct.positions or []
-            log(f"  Equity ${equity:.2f}  Positions {len(open_positions)}")
-
-            for p in open_positions:
-                open_time = getattr(p, "open_time", None)
-                if open_time:
-                    try:
-                        ot = datetime.fromisoformat(open_time.replace("Z", "+00:00"))
-                        age_min = (datetime.now(timezone.utc) - ot).total_seconds() / 60
-                        if age_min > cfg.MAX_HOLD_MINUTES:
-                            profit = getattr(p, "profit", 0) or 0
-                            if profit > 0:
-                                log(f"  Closing {p.ticket} (age {age_min:.0f}min)")
-                                close_position(client, aid, p.ticket, "time_profit")
-                    except Exception as e:
-                        log(f"  Hold check: {e}")
-
-            acct = client.accounts.get(aid)
-            open_positions = acct.positions or []
-            equity = acct.account.equity
-
-            if not in_trading_window():
-                log("  Outside window.")
-                return
-            if len(open_positions) >= cfg.MAX_POSITIONS:
-                log("  Max positions.")
-                return
-
-            bar_key = str(bar_ts)
-            if LAST_BAR_FILE.exists() and LAST_BAR_FILE.read_text().strip() == bar_key:
-                log("  Already traded bar.")
-                return
-
-            volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
-            max_risk_usd = equity * 0.02
-            max_lots_by_risk = max_risk_usd / (4.0 * 10.0)
-            volume = round(min(volume, max_lots_by_risk), 2)
-            volume = max(volume, cfg.LOT_MIN)
-
-            # Place order FIRST at market, then compute TP/SL from actual fill price
-            log(f"  SIGNAL {side} {symbol} (Dukascopy close={price:.5f}) meta={prob:.3f}")
-
-            try:
-                # Step 1: Place market order WITHOUT stops
-                result = client.orders.place(
-                    aid, type="market", symbol=tickerall_symbol, side=side,
-                    volume=volume,
-                    comment=f"{symbol}-{side[0]}-m{prob:.2f}",
-                    timeout=90.0,
-                )
-            except Exception as oe:
-                log(f"  Order failed: {type(oe).__name__}: {oe}")
-                return
-
-            # Step 2: Compute TP/SL from ACTUAL fill price
-            fill_price = float(result.price)
-            tp, sl, tp_pips, sl_pips = compute_tp_sl(
-                fill_price, atr_frac, pip, side,
-                min_tp=getattr(cfg, "MIN_TP_PIPS", 15.0),
-                min_sl=getattr(cfg, "MIN_SL_PIPS", 10.0),
-                max_tp=getattr(cfg, "MAX_TP_PIPS", 30.0),
-                max_sl=getattr(cfg, "MAX_SL_PIPS", 15.0),
+            result = client.orders.place(
+                aid, type="market", symbol=tickerall_symbol, side=side,
+                volume=volume,
+                comment="%s-%s-m%.2f" % (symbol, side[0], prob),
+                timeout=90.0,
             )
-            log(f"      Fill={fill_price:.5f}  Vol={volume}  TP={tp}  SL={sl}")
+        except Exception as oe:
+            log("  Order failed: %s: %s" % (type(oe).__name__, oe))
+            return
 
-            # Step 3: Attach SL/TP via position modify
+        fill_price = float(result.price)
+        tp, sl, tp_pips, sl_pips = compute_tp_sl(
+            fill_price, atr_frac, pip, side,
+            min_tp=getattr(cfg, "MIN_TP_PIPS", 15.0),
+            min_sl=getattr(cfg, "MIN_SL_PIPS", 10.0),
+            max_tp=getattr(cfg, "MAX_TP_PIPS", 30.0),
+            max_sl=getattr(cfg, "MAX_SL_PIPS", 15.0),
+        )
+        log("      Fill=%.5f  Vol=%.2f  TP=%.5f  SL=%.5f" % (fill_price, volume, tp, sl))
+
+        try:
+            client.positions.modify(
+                aid, int(result.ticket),
+                stop_loss=sl, take_profit=tp,
+                timeout=90.0,
+            )
+            log("      Stops attached OK")
+        except Exception as me:
+            log("      Stop attach failed: %s: %s" % (type(me).__name__, me))
             try:
-                client.positions.modify(
-                    aid, int(result.ticket),
-                    stop_loss=sl, take_profit=tp,
-                    timeout=90.0,
-                )
-                log(f"      Stops attached OK")
-            except Exception as me:
-                log(f"      Stop attach failed: {type(me).__name__}: {me}")
-                # Try to close the naked position
-                try:
-                    client.positions.close(aid, ticket=int(result.ticket))
-                    log(f"      Closed naked position")
-                except Exception:
-                    pass
-                return
-            except Exception as oe:
-                log(f"  Order failed: {type(oe).__name__}: {oe}")
-                return
+                client.positions.close(aid, ticket=int(result.ticket))
+                log("      Closed naked position")
+            except Exception:
+                pass
+            return
 
-            LAST_BAR_FILE.write_text(bar_key)
-            log(f"  Placed: ticket={result.ticket} status={result.status}")
+        LAST_BAR_FILE.write_text(bar_key)
+        log("  Placed: ticket=%s status=%s" % (result.ticket, result.status))
 
-            log_trade({
-                "opened_utc": datetime.now(timezone.utc).isoformat(),
-                "symbol": symbol, "side": side,
-                "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
-                "primary_up": round(r["primary_up"], 4),
-                "primary_down": round(r["primary_down"], 4),
-                "meta_up": round(r["meta_up"], 4),
-                "meta_down": round(r["meta_down"], 4),
-                "ticket": result.ticket,
-                "entry_price": result.price,
-                "tp": tp, "sl": sl,
-                "volume": volume,
-                "equity_before": equity,
-            })
-            notify("Trade Placed", f"{symbol} {side} #{result.ticket}")
+        log_trade({
+            "opened_utc": datetime.now(timezone.utc).isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
+            "primary_up": round(r["primary_up"], 4),
+            "primary_down": round(r["primary_down"], 4),
+            "meta_up": round(r["meta_up"], 4),
+            "meta_down": round(r["meta_down"], 4),
+            "ticket": result.ticket,
+            "entry_price": result.price,
+            "tp": tp,
+            "sl": sl,
+            "volume": volume,
+            "equity_before": equity,
+        })
+        notify("Trade Placed", "%s %s #%s" % (symbol, side, result.ticket))
 
-        except Exception as e:
-            log(f"  Cycle error: {type(e).__name__}: {e}")
-        finally:
-            try: client.sessions.end(aid)
-            except: pass
+    except Exception as e:
+        log("  Cycle error: %s: %s" % (type(e).__name__, e))
     finally:
-        if LOCK.exists(): LOCK.unlink()
+        if client is not None and aid is not None:
+            try:
+                client.sessions.end(aid)
+            except Exception:
+                pass
+        if LOCK.exists():
+            LOCK.unlink()
 
 
 if __name__ == "__main__":
