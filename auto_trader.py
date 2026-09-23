@@ -159,6 +159,26 @@ def open_session():
 
 
 def manage_positions(client, aid, open_positions):
+    if not open_positions:
+        return
+
+    # --- Check 1: Collective profit guard ---
+    collective_tp = getattr(cfg, "COLLECTIVE_TP_USD", 10.0)
+    total_profit = sum((getattr(p, "profit", 0) or 0) for p in open_positions)
+    if total_profit >= collective_tp:
+        log("  COLLECTIVE TP: total unrealized $%.2f >= $%.2f" % (total_profit, collective_tp))
+        closed = 0
+        for p in open_positions:
+            profit = getattr(p, "profit", 0) or 0
+            if profit > 0:
+                if close_position(client, aid, p.ticket, "collective_tp"):
+                    closed += 1
+        log("  Closed %d profitable positions" % closed)
+        return
+
+    # --- Check 2: Individual trade: age > 1 min AND profit >= $3 ---
+    min_hold = getattr(cfg, "PROFIT_HOLD_MINUTES", 1)
+    min_profit = getattr(cfg, "PROFIT_TAKE_USD", 3.0)
     for p in open_positions:
         open_time = getattr(p, "open_time", None)
         if not open_time:
@@ -166,11 +186,10 @@ def manage_positions(client, aid, open_positions):
         try:
             ot = datetime.fromisoformat(open_time.replace("Z", "+00:00"))
             age_min = (datetime.now(timezone.utc) - ot).total_seconds() / 60
-            if age_min > cfg.MAX_HOLD_MINUTES:
-                profit = getattr(p, "profit", 0) or 0
-                if profit > 0:
-                    log("  Closing %s (age %.0fmin, +$%.2f)" % (p.ticket, age_min, profit))
-                    close_position(client, aid, p.ticket, "time_profit")
+            profit = getattr(p, "profit", 0) or 0
+            if age_min >= min_hold and profit >= min_profit:
+                log("  PROFIT TAKE: %s age=%.1fmin profit=$%.2f" % (p.ticket, age_min, profit))
+                close_position(client, aid, p.ticket, "time_profit")
         except Exception as e:
             log("  Hold check: %s" % e)
 
@@ -228,6 +247,20 @@ def main():
                 r["primary_down"], r["meta_down"], r["thr_down"], sell_m,
             ))
 
+        # 4. Account state + position management (ALWAYS runs)
+        acct = client.accounts.get(aid)
+        equity = acct.account.equity
+        open_positions = acct.positions or []
+        log("  Equity $%.2f  Positions %d" % (equity, len(open_positions)))
+
+        manage_positions(client, aid, open_positions)
+
+        # Refresh state after possible closes
+        acct = client.accounts.get(aid)
+        open_positions = acct.positions or []
+        equity = acct.account.equity
+
+        # 5. Pick best signal
         best = pick_best(results)
         if best is None:
             log("  No signal. Skipping.")
@@ -242,22 +275,10 @@ def main():
 
         log("  Best: %s %s @ meta=%.4f" % (symbol, side, prob))
 
-        # 4. Guards
+        # 6. Guards
         today_trades = load_todays_trades()
         if not safety_guards_pass(symbol, today_trades):
             return
-
-        # 5. Account state
-        acct = client.accounts.get(aid)
-        equity = acct.account.equity
-        open_positions = acct.positions or []
-        log("  Equity $%.2f  Positions %d" % (equity, len(open_positions)))
-
-        # 6. Manage existing
-        manage_positions(client, aid, open_positions)
-        acct = client.accounts.get(aid)
-        open_positions = acct.positions or []
-        equity = acct.account.equity
 
         # 7. Re-check limits
         if not in_trading_window():

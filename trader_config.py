@@ -50,3 +50,8 @@ BASE_VOLUME = 0.21
 MAX_TRADES_PER_SYMBOL_PER_DAY = 3
 MAX_TRADES_PER_HOUR = 2
 MAX_CONSECUTIVE_LOSSES = 2
+
+# === EXIT RULES (added 2026-09-23) ===
+COLLECTIVE_TP_USD = 10.0      # close all profitable trades if total unrealized >= $10
+PROFIT_TAKE_USD = 3.0         # close individual trade if profit >= $3
+PROFIT_HOLD_MINUTES = 1       # ...after it's been open this long
