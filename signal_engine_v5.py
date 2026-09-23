@@ -122,6 +122,43 @@ def fetch_pair(instrument_name, days=7):
     return df
 
 
+def fetch_pair_biquote(symbol, count=1500, include_forming=True):
+    """Fetch live OHLC from Biquote. Optionally include the still-forming bar."""
+    try:
+        from biquote import Biquote
+        bq = Biquote()
+        raw = pd.DataFrame(bq.ohlc(symbol, interval="5m", limit=count))
+        if raw is None or len(raw) == 0:
+            return None
+
+        if not include_forming:
+            raw = raw[~raw["isOpen"]].copy()
+
+        raw["Date"] = pd.to_datetime(raw["openTime"])
+        raw = raw.set_index("Date")
+        raw = raw.rename(columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "tickVolume": "Volume",
+        })[["Open", "High", "Low", "Close", "Volume"]]
+        raw = raw.sort_index()
+        raw = raw[~raw.index.duplicated(keep="last")]
+        return raw
+    except Exception as e:
+        print("  %s biquote fetch failed: %s: %s" % (symbol, type(e).__name__, e))
+        return None
+
+
+def fetch_all_pairs_biquote(count=1500, include_forming=True):
+    """Fetch all 3 pairs from Biquote. One API call per symbol."""
+    return {
+        sym: fetch_pair_biquote(sym, count=count, include_forming=include_forming)
+        for sym in ["USDJPY", "EURUSD", "GBPUSD"]
+    }
+
+
 def fetch_pair_live(client, account_id, symbol, count=1500, _retry=True):
     """Fetch M5 bars from TickerAll/MT5. Retries once if session went cold."""
     try:
