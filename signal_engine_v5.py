@@ -255,7 +255,15 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         cross_copy = cross_daily.copy()
         cross_copy["date"] = pd.to_datetime(cross_copy.index).normalize()
         cross_copy = cross_copy.reset_index(drop=True)
-        df = df.merge(cross_copy, on="date", how="left")
+
+        # Merge-as-of: use the most recent past daily cross-asset row for each bar.
+        # This prevents NaN when today's daily row hasn't been published yet.
+        # Cast both date columns to datetime64[ns] so merge_asof keys match.
+        df["date"] = pd.to_datetime(df["date"]).astype("datetime64[ns]")
+        cross_copy["date"] = pd.to_datetime(cross_copy["date"]).astype("datetime64[ns]")
+        df = df.sort_values("date")
+        cross_copy = cross_copy.sort_values("date").drop_duplicates(subset=["date"], keep="last")
+        df = pd.merge_asof(df, cross_copy, on="date", direction="backward")
         df = df.set_index(ts_col).drop(columns=["date"], errors="ignore")
 
         features = models["features"]
