@@ -79,7 +79,7 @@ def size_by_confidence(prob, base=0.03):
     elif prob >= 0.70: mult = 2.0
     elif prob >= 0.60: mult = 1.5
     else: mult = 1.0
-    return max(0.01, min(round(base * mult, 2), 0.15))
+    return max(0.01, min(round(base * mult, 2), 0.60))
 
 
 def compute_tp_sl(price, atr_frac, pip, side,
@@ -252,23 +252,54 @@ def main():
                 return
 
             volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
-            max_risk_usd = equity * 0.05
+            max_risk_usd = equity * 0.02
             max_lots_by_risk = max_risk_usd / (4.0 * 10.0)
             volume = round(min(volume, max_lots_by_risk), 2)
             volume = max(volume, cfg.LOT_MIN)
 
-            tp, sl, tp_pips, sl_pips = compute_tp_sl(price, atr_frac, pip, side)
-
-            log(f"  SIGNAL {side} {symbol} @ {price:.5f} meta={prob:.3f}")
-            log(f"      Vol={volume}  TP={tp}  SL={sl}")
+            # Place order FIRST at market, then compute TP/SL from actual fill price
+            log(f"  SIGNAL {side} {symbol} (Dukascopy close={price:.5f}) meta={prob:.3f}")
 
             try:
+                # Step 1: Place market order WITHOUT stops
                 result = client.orders.place(
                     aid, type="market", symbol=tickerall_symbol, side=side,
-                    volume=volume, stop_loss=sl, take_profit=tp,
+                    volume=volume,
                     comment=f"{symbol}-{side[0]}-m{prob:.2f}",
                     timeout=90.0,
                 )
+            except Exception as oe:
+                log(f"  Order failed: {type(oe).__name__}: {oe}")
+                return
+
+            # Step 2: Compute TP/SL from ACTUAL fill price
+            fill_price = float(result.price)
+            tp, sl, tp_pips, sl_pips = compute_tp_sl(
+                fill_price, atr_frac, pip, side,
+                min_tp=getattr(cfg, "MIN_TP_PIPS", 15.0),
+                min_sl=getattr(cfg, "MIN_SL_PIPS", 10.0),
+                max_tp=getattr(cfg, "MAX_TP_PIPS", 30.0),
+                max_sl=getattr(cfg, "MAX_SL_PIPS", 15.0),
+            )
+            log(f"      Fill={fill_price:.5f}  Vol={volume}  TP={tp}  SL={sl}")
+
+            # Step 3: Attach SL/TP via position modify
+            try:
+                client.positions.modify(
+                    aid, int(result.ticket),
+                    stop_loss=sl, take_profit=tp,
+                    timeout=90.0,
+                )
+                log(f"      Stops attached OK")
+            except Exception as me:
+                log(f"      Stop attach failed: {type(me).__name__}: {me}")
+                # Try to close the naked position
+                try:
+                    client.positions.close(aid, ticket=int(result.ticket))
+                    log(f"      Closed naked position")
+                except Exception:
+                    pass
+                return
             except Exception as oe:
                 log(f"  Order failed: {type(oe).__name__}: {oe}")
                 return
