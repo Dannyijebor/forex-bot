@@ -158,39 +158,38 @@ def open_session():
     return None, None
 
 
-def compute_adaptive_boost():
-    """
-    Look at the last N closed trades' win rate and return a threshold boost.
-    Positive = looser (more trades). Negative = tighter (fewer trades).
-    Bounded to [ADAPTIVE_MIN_PRIMARY, ADAPTIVE_MAX_PRIMARY].
-    """
-    p = Path(cfg.TRADES_CSV)
-    if not p.exists():
-        return 0.0, 0.0, "no_data"
+def compute_adaptive_boost(client=None, aid=None):
+    """Read most recent closed trades from Exness (newest-first from API)."""
+    closed = []
+    if client is not None and aid is not None:
+        try:
+            history = client.history.get(aid)
+            # API returns newest-first: history[0] = most recent
+            for h in history[:20]:
+                pnl = ((getattr(h, "profit", 0) or 0)
+                       + (getattr(h, "commission", 0) or 0)
+                       + (getattr(h, "swap", 0) or 0))
+                closed.append(float(pnl))
+        except Exception as e:
+            print("  adaptive history failed: %s" % e)
+            closed = []
 
-    try:
-        df = pd.read_csv(p)
-    except Exception:
-        return 0.0, 0.0, "read_fail"
+    print("  adaptive saw %d trades, newest5=%s" % (len(closed), closed[:5]))
 
-    if df.empty or "pnl_usd" not in df.columns:
-        return 0.0, 0.0, "empty"
-
-    closed = df.dropna(subset=["pnl_usd"]).copy()
     if len(closed) < 3:
         return 0.0, 0.0, "warming_up"
 
     window = getattr(cfg, "ADAPTIVE_WINDOW", 5)
-    recent = closed.tail(window)
-    win_rate = (recent["pnl_usd"] > 0).mean()
+    recent = closed[:window]   # <-- NEWEST 5 (was closed[-window:])
+    win_rate = sum(1 for p in recent if p > 0) / len(recent)
 
     step = getattr(cfg, "ADAPTIVE_STEP", 0.02)
     loosen = getattr(cfg, "ADAPTIVE_LOOSEN_THRESHOLD", 0.60)
     tighten = getattr(cfg, "ADAPTIVE_TIGHTEN_THRESHOLD", 0.40)
-    max_boost = getattr(cfg, "ADAPTIVE_MAX_PRIMARY", 0.50) - 0.42  # headroom above base
+    max_boost = getattr(cfg, "ADAPTIVE_MAX_PRIMARY", 0.50) - 0.42
 
     if win_rate >= loosen:
-        boost = min(step * 2, max_boost)   # double step if very high
+        boost = min(step * 2, max_boost)
         state = "loosen"
     elif win_rate <= tighten:
         boost = -step
@@ -277,7 +276,7 @@ def main():
                 log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
 
         # 3. Score all symbols
-        threshold_boost, win_rate, adaptive_state = compute_adaptive_boost()
+        threshold_boost, win_rate, adaptive_state = compute_adaptive_boost(client, aid)
         log("  ADAPTIVE: state=%s win_rate=%.2f boost=%+.3f" % (adaptive_state, win_rate, threshold_boost))
         results = score_all(pairs, cross_daily, boost=threshold_boost)
         if not results:
