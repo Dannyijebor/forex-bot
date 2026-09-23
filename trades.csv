@@ -1,1 +1,1 @@
-opened_utc,bar_utc,prob,ticket,side,entry_price,tp,sl,volume,equity_before,pnl_usd,status
+opened_utc,symbol,side,bar_utc,primary_up,primary_down,meta_up,meta_down,ticket,entry_price,tp,sl,volume,equity_before
