@@ -9,11 +9,14 @@ from feature_engine_v2 import FEATURES_V2, build_features_v2
 
 PIP_SIZES = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
 
-# Per-symbol, per-direction meta thresholds (from Kaggle backtest)
+# Primary prob must exceed this to fire
+PRIMARY_THRESHOLD = 0.42
+
+# Per-symbol, per-direction meta thresholds (loosened from backtest to allow more trades)
 META_THRESHOLDS = {
-    "EURUSD": {"up": 0.45, "down": 0.40},
-    "GBPUSD": {"up": 0.50, "down": 0.50},
-    "USDJPY": {"up": 0.45, "down": 0.50},
+    "EURUSD": {"up": 0.40, "down": 0.35},
+    "GBPUSD": {"up": 0.45, "down": 0.45},
+    "USDJPY": {"up": 0.40, "down": 0.45},
 }
 
 TICKERALL_SYMBOLS = {"EURUSD": "EURUSDm", "GBPUSD": "GBPUSDm", "USDJPY": "USDJPYm"}
@@ -161,8 +164,8 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily):
         thr_up = META_THRESHOLDS[symbol]["up"]
         thr_down = META_THRESHOLDS[symbol]["down"]
 
-        buy_ok = (p_up > 0.5) and (m_up > thr_up)
-        sell_ok = (p_down > 0.5) and (m_down > thr_down)
+        buy_ok = (p_up > PRIMARY_THRESHOLD) and (m_up > thr_up)
+        sell_ok = (p_down > PRIMARY_THRESHOLD) and (m_down > thr_down)
 
         return {
             "symbol": symbol,
