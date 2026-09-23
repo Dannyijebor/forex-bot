@@ -227,11 +227,16 @@ def load_config():
 # ============================================================
 def compute_metrics(df):
     """Compute investor-grade metrics."""
+    _empty = {
+        "total_trades": 0, "total_pnl": 0.0, "win_rate": 0.0,
+        "avg_win": 0.0, "avg_loss": 0.0, "profit_factor": 0.0,
+        "max_dd": 0.0, "sharpe": 0.0, "sortino": 0.0, "avg_trade": 0.0,
+    }
     if df.empty or "pnl_usd" not in df.columns:
-        return {}
+        return _empty
     completed = df.dropna(subset=["pnl_usd"])
     if len(completed) == 0:
-        return {}
+        return _empty
 
     pnl = completed["pnl_usd"].astype(float)
     wins = pnl[pnl > 0]
@@ -400,7 +405,7 @@ metrics = compute_metrics(df)
 # ============================================================
 # EMPTY STATE
 # ============================================================
-if df.empty or len(df) < 1:
+if df.empty or len(df) < 1 or metrics.get("total_trades", 0) == 0:
     st.markdown("""
     <div class="empty-state">
         <div class="empty-icon">◇</div>
