@@ -1,15 +1,11 @@
-"""
-auto_trader.py — V4: 3-symbol primary + meta ensemble with cross-asset features.
-Runs every 5 min via external cron. Places trade on best meta-qualified symbol.
-"""
+"""auto_trader.py — V5: 3-symbol BUY+SELL meta-labeled trading."""
 import os, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from signal_engine_v4 import (
-    load_cross_assets, fetch_all_pairs, score_all,
-    META_THRESHOLDS, PIP_SIZES, TICKERALL_SYMBOLS,
+from signal_engine_v5 import (
+    load_cross_assets, fetch_all_pairs, score_all, pick_best,
 )
 import trader_config as cfg
 
@@ -44,11 +40,9 @@ def kill_switch_active():
 
 def load_todays_trades():
     p = Path(cfg.TRADES_CSV)
-    if not p.exists():
-        return pd.DataFrame()
+    if not p.exists(): return pd.DataFrame()
     df = pd.read_csv(p)
-    if df.empty:
-        return df
+    if df.empty: return df
     df["opened_utc"] = pd.to_datetime(df["opened_utc"], format="mixed", utc=True)
     today = datetime.now(timezone.utc).date()
     return df[df["opened_utc"].dt.date == today]
@@ -68,10 +62,10 @@ def log_trade(row):
 def close_position(client, aid, ticket, reason):
     try:
         r = client.positions.close(aid, ticket=int(ticket))
-        log(f"  Closed ticket {ticket} ({reason}): {r.closed}")
+        log(f"  Closed {ticket} ({reason}): {r.closed}")
         return True
     except Exception as e:
-        log(f"  Close failed for {ticket}: {e}")
+        log(f"  Close {ticket} failed: {e}")
         return False
 
 
@@ -80,70 +74,68 @@ def size_by_confidence(prob, base=0.10):
     elif prob >= 0.70: mult = 2.0
     elif prob >= 0.60: mult = 1.5
     else: mult = 1.0
-    lot = round(base * mult, 2)
-    return max(0.01, min(lot, 0.5))
+    return max(0.01, min(round(base * mult, 2), 0.5))
 
 
-def compute_tp_sl(price, atr_frac, pip, tp_mult=2.0, sl_mult=1.0,
+def compute_tp_sl(price, atr_frac, pip, side,
+                  tp_mult=2.0, sl_mult=1.0,
                   min_tp=8.0, min_sl=4.0, max_tp=25.0, max_sl=10.0):
     atr_price = atr_frac * price
     atr_pips = atr_price / pip
     tp_pips = max(min_tp, min(atr_pips * tp_mult, max_tp))
     sl_pips = max(min_sl, min(atr_pips * sl_mult, max_sl))
-    return (round(price + tp_pips * pip, 5),
-            round(price - sl_pips * pip, 5),
-            tp_pips, sl_pips)
+    if side == "BUY":
+        tp = round(price + tp_pips * pip, 5)
+        sl = round(price - sl_pips * pip, 5)
+    else:
+        tp = round(price - tp_pips * pip, 5)
+        sl = round(price + sl_pips * pip, 5)
+    return tp, sl, tp_pips, sl_pips
 
 
 def main():
     if LOCK.exists():
         age = time.time() - LOCK.stat().st_mtime
         if age < 240:
-            log(f"Locked ({age:.0f}s). Exiting.")
+            log(f"Locked ({age:.0f}s).")
             return
     LOCK.touch()
 
     try:
         if kill_switch_active():
-            log("KILL switch active — no trading.")
+            log("KILL switch active.")
             return
 
-        # ── Score all symbols ──
         cross_daily = load_cross_assets()
         pairs = fetch_all_pairs(days=7)
         if any(p is None for p in pairs.values()):
-            log("Data fetch failed for at least one pair.")
+            log("Data fetch failed.")
             return
 
         results = score_all(pairs, cross_daily)
         if not results:
-            log("Scoring failed for all symbols.")
+            log("No scoring results.")
             return
 
         for r in results:
-            mark = "✓" if r["qualifies"] else "✗"
-            log(f"  {r['symbol']}: primary={r['primary_prob']:.4f}  "
-                f"meta={r['meta_prob']:.4f}  thr={r['threshold']} {mark}")
+            buy_m = "Y" if r["buy_qualifies"] else "n"
+            sell_m = "Y" if r["sell_qualifies"] else "n"
+            log(f"  {r['symbol']}: UP meta={r['meta_up']:.4f} thr={r['thr_up']} {buy_m} | DOWN meta={r['meta_down']:.4f} thr={r['thr_down']} {sell_m}")
 
-        qualifies = [r for r in results if r["qualifies"]]
-        if not qualifies:
-            log("  No symbol passed meta threshold. Skipping trade.")
+        best = pick_best(results)
+        if best is None:
+            log("  No signal. Skipping.")
             return
 
-        # Best meta confidence wins
-        best = max(qualifies, key=lambda r: r["meta_prob"])
-        symbol = best["symbol"]
-        prob = best["meta_prob"]
-        primary_prob = best["primary_prob"]
-        price = best["close"]
-        bar_ts = best["timestamp"]
-        atr_frac = best["atr"]
-        tickerall_symbol = best["tickerall_symbol"]
-        pip = best["pip_size"]
+        symbol, side, prob, r = best
+        price = r["close"]
+        bar_ts = r["timestamp"]
+        atr_frac = r["atr"]
+        tickerall_symbol = r["tickerall_symbol"]
+        pip = r["pip_size"]
 
-        log(f"  Best: {symbol} (meta={prob:.4f}, primary={primary_prob:.4f})")
+        log(f"  Best: {symbol} {side} @ meta={prob:.4f}")
 
-        # ── Connect to broker ──
         client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
         session = None
         for attempt in range(3):
@@ -156,15 +148,14 @@ def main():
                 )
                 break
             except Exception as e:
-                log(f"  Session attempt {attempt+1}/3 failed: {e}")
+                log(f"  Session {attempt+1}/3 failed: {e}")
                 time.sleep(5)
         if session is None:
-            log("  All session attempts failed.")
+            log("  All sessions failed.")
             return
 
         if not session.is_demo:
-            log("❌ LIVE ACCOUNT — refusing.")
-            notify("BLOCKED", "Attempted live trade — aborted.")
+            log("LIVE ACCOUNT - refusing.")
             client.sessions.end(session.account_id)
             return
 
@@ -173,11 +164,9 @@ def main():
         try:
             acct = client.accounts.get(aid)
             equity = acct.account.equity
-            balance = acct.account.balance
             open_positions = acct.positions or []
             log(f"  Equity ${equity:.2f}  Positions {len(open_positions)}")
 
-            # Position management: close stale positions
             for p in open_positions:
                 open_time = getattr(p, "open_time", None)
                 if open_time:
@@ -187,95 +176,79 @@ def main():
                         if age_min > cfg.MAX_HOLD_MINUTES:
                             profit = getattr(p, "profit", 0) or 0
                             if profit > 0:
-                                log(f"  Closing {p.ticket} (age {age_min:.0f}min, +${profit:.2f})")
+                                log(f"  Closing {p.ticket} (age {age_min:.0f}min)")
                                 close_position(client, aid, p.ticket, "time_profit")
                     except Exception as e:
                         log(f"  Hold check: {e}")
 
-            # Re-fetch after closes
             acct = client.accounts.get(aid)
             open_positions = acct.positions or []
             equity = acct.account.equity
 
-            # ── Safety limits ──
             if not in_trading_window():
-                log(f"  Outside window ({cfg.TRADE_HOURS_UTC_START}-{cfg.TRADE_HOURS_UTC_END} UTC).")
+                log(f"  Outside window.")
                 return
-
             if len(open_positions) >= cfg.MAX_POSITIONS:
-                log(f"  At max positions ({cfg.MAX_POSITIONS}).")
+                log(f"  Max positions.")
                 return
-
             today_trades = load_todays_trades()
             if len(today_trades) >= cfg.MAX_TRADES_PER_DAY:
-                log(f"  At daily cap ({cfg.MAX_TRADES_PER_DAY}).")
+                log(f"  Daily cap.")
                 return
 
-            # Already-traded-this-bar check
             bar_key = str(bar_ts)
             if LAST_BAR_FILE.exists() and LAST_BAR_FILE.read_text().strip() == bar_key:
-                log(f"  Already traded bar {bar_key}.")
+                log(f"  Already traded bar.")
                 return
 
-            # ── Place order ──
             volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
-
-            # Risk cap
             max_risk_usd = equity * 0.05
-            max_lots_by_risk = max_risk_usd / (4.0 * 10.0)  # 4-pip SL, ~$10/pip/lot
+            max_lots_by_risk = max_risk_usd / (4.0 * 10.0)
             volume = round(min(volume, max_lots_by_risk), 2)
             volume = max(volume, cfg.LOT_MIN)
 
-            tp, sl, tp_pips, sl_pips = compute_tp_sl(price, atr_frac, pip)
+            tp, sl, tp_pips, sl_pips = compute_tp_sl(price, atr_frac, pip, side)
 
-            log(f"  🎯 TRADE ({symbol} meta={prob:.3f}) — BUY @ {price:.5f}")
-            log(f"      Vol={volume}  TP={tp} ({tp_pips:.1f}p)  SL={sl} ({sl_pips:.1f}p)")
+            log(f"  SIGNAL {side} {symbol} @ {price:.5f} meta={prob:.3f}")
+            log(f"      Vol={volume}  TP={tp}  SL={sl}")
 
             try:
                 result = client.orders.place(
-                    aid, type="market", symbol=tickerall_symbol, side="BUY",
+                    aid, type="market", symbol=tickerall_symbol, side=side,
                     volume=volume, stop_loss=sl, take_profit=tp,
-                    comment=f"{symbol}-m{prob:.2f}",
+                    comment=f"{symbol}-{side[0]}-m{prob:.2f}",
                     timeout=90.0,
                 )
             except Exception as oe:
-                log(f"  Order placement failed: {type(oe).__name__}: {oe}")
+                log(f"  Order failed: {type(oe).__name__}: {oe}")
                 return
 
             LAST_BAR_FILE.write_text(bar_key)
-            log(f"  Order placed: ticket={result.ticket} status={result.status} price={result.price}")
+            log(f"  Placed: ticket={result.ticket} status={result.status}")
 
             log_trade({
                 "opened_utc": datetime.now(timezone.utc).isoformat(),
-                "symbol": symbol,
+                "symbol": symbol, "side": side,
                 "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
-                "primary_prob": round(primary_prob, 4),
-                "meta_prob": round(prob, 4),
+                "primary_up": round(r["primary_up"], 4),
+                "primary_down": round(r["primary_down"], 4),
+                "meta_up": round(r["meta_up"], 4),
+                "meta_down": round(r["meta_down"], 4),
                 "ticket": result.ticket,
-                "side": "BUY",
                 "entry_price": result.price,
                 "tp": tp, "sl": sl,
-                "tp_pips": round(tp_pips, 2),
-                "sl_pips": round(sl_pips, 2),
                 "volume": volume,
-                "atr": round(atr_frac, 6),
                 "equity_before": equity,
             })
-
-            notify("Trade Placed",
-                   f"{symbol} BUY @ {result.price} m={prob:.2f} #{result.ticket}")
+            notify("Trade Placed", f"{symbol} {side} #{result.ticket}")
 
         except Exception as e:
-            log(f"  ⚠️ Cycle error: {type(e).__name__}: {e}")
+            log(f"  Cycle error: {type(e).__name__}: {e}")
         finally:
-            try:
-                client.sessions.end(aid)
-            except Exception:
-                pass
-
+            try: client.sessions.end(aid)
+            except: pass
     finally:
-        if LOCK.exists():
-            LOCK.unlink()
+        if LOCK.exists(): LOCK.unlink()
 
 
 if __name__ == "__main__":
