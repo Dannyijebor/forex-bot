@@ -122,8 +122,8 @@ def fetch_pair(instrument_name, days=7):
     return df
 
 
-def fetch_pair_live(client, account_id, symbol, count=1500):
-    """Fetch M5 bars from TickerAll/MT5. Same source as execution."""
+def fetch_pair_live(client, account_id, symbol, count=1500, _retry=True):
+    """Fetch M5 bars from TickerAll/MT5. Retries once if session went cold."""
     try:
         candles = client.candles.get(
             account_id,
@@ -147,6 +147,15 @@ def fetch_pair_live(client, account_id, symbol, count=1500):
         df = df[~df.index.duplicated(keep="last")]
         return df
     except Exception as e:
+        msg = str(e)
+        if _retry and ("NOT_HOT" in msg or "not currently connected" in msg):
+            print("  session went cold, reconnecting...")
+            try:
+                client.sessions.end(account_id)
+            except Exception:
+                pass
+            # Caller must reconnect; signal that with None
+            return None
         print(f"  {symbol} live fetch failed: {type(e).__name__}: {e}")
         return None
 
@@ -161,6 +170,38 @@ def fetch_all_pairs_live(client, account_id, count=1500):
 
 def fetch_all_pairs(days=7):
     return {sym: fetch_pair(sym, days) for sym in ["USDJPY", "EURUSD", "GBPUSD"]}
+
+
+def current_regime(df):
+    """Classify current market regime based on ATR ratio and trend."""
+    try:
+        atr = float(df["atr"].iloc[-1])
+        atr_median = float(df["atr"].rolling(200).median().iloc[-1])
+        vol_ratio = atr / (atr_median + 1e-12)
+
+        close = df["Close"]
+        sma20 = close.rolling(20).mean().iloc[-1]
+        sma50 = close.rolling(50).mean().iloc[-1]
+        trend = abs(sma20 - sma50) / close.iloc[-1]
+
+        if vol_ratio > 1.5:
+            return "volatile", vol_ratio, trend
+        if trend > 0.0015:
+            return "trending", vol_ratio, trend
+        if vol_ratio < 0.7:
+            return "quiet", vol_ratio, trend
+        return "normal", vol_ratio, trend
+    except Exception:
+        return "normal", 0.0, 0.0
+
+
+# Regime-based threshold adjustments
+REGIME_ADJUST = {
+    "quiet":    {"primary": +0.03, "meta": +0.05},
+    "normal":   {"primary":  0.00, "meta":  0.00},
+    "volatile": {"primary": -0.04, "meta": -0.03},
+    "trending": {"primary": -0.07, "meta": -0.05},
+}
 
 
 def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.0):
@@ -201,9 +242,20 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         thr_up = META_THRESHOLDS[symbol]["up"]
         thr_down = META_THRESHOLDS[symbol]["down"]
 
-        p_thresh = max(0.20, PRIMARY_THRESHOLD - boost)
-        buy_ok = (p_up > p_thresh) and (m_up > thr_up)
-        sell_ok = (p_down > p_thresh) and (m_down > thr_down)
+        # Regime-aware threshold adjustment
+        regime, vol_ratio, trend = current_regime(df)
+        adj = REGIME_ADJUST.get(regime, {"primary": 0.0, "meta": 0.0})
+
+        p_thresh = max(0.20, PRIMARY_THRESHOLD - boost + adj["primary"])
+        meta_thr_up = max(0.20, thr_up + adj["meta"])
+        meta_thr_down = max(0.20, thr_down + adj["meta"])
+
+        # Update thr_up/thr_down so the log shows the ADJUSTED values
+        thr_up = meta_thr_up
+        thr_down = meta_thr_down
+
+        buy_ok = (p_up > p_thresh) and (m_up > meta_thr_up)
+        sell_ok = (p_down > p_thresh) and (m_down > meta_thr_down)
 
         return {
             "symbol": symbol,
@@ -213,6 +265,9 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
             "meta_down": float(m_down),
             "thr_up": thr_up,
             "thr_down": thr_down,
+            "regime": regime,
+            "vol_ratio": vol_ratio,
+            "trend": trend,
             "buy_qualifies": buy_ok,
             "sell_qualifies": sell_ok,
             "close": float(df["Close"].iloc[-1]),

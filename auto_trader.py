@@ -337,8 +337,9 @@ def main():
         for r in results:
             buy_m = "Y" if r["buy_qualifies"] else "n"
             sell_m = "Y" if r["sell_qualifies"] else "n"
-            log("  %s: UP p=%.3f m=%.3f/%.2f %s | DOWN p=%.3f m=%.3f/%.2f %s" % (
-                r["symbol"],
+            regime = r.get("regime", "?")
+            log("  %s [%s]: UP p=%.3f m=%.3f/%.2f %s | DOWN p=%.3f m=%.3f/%.2f %s" % (
+                r["symbol"], regime,
                 r["primary_up"], r["meta_up"], r["thr_up"], buy_m,
                 r["primary_down"], r["meta_down"], r["thr_down"], sell_m,
             ))
