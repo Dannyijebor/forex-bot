@@ -56,8 +56,16 @@ COLLECTIVE_TP_USD = 10.0      # close all profitable trades if total unrealized 
 
 # === EXIT + ADAPTIVE RULES (2026-09-23) ===
 COLLECTIVE_TP_USD = 10.0
-PROFIT_TAKE_USD = 0.10        # any positive profit
-PROFIT_HOLD_MINUTES = 5       # ...after being open this long
-WIN_STREAK_THRESHOLD = 3      # after N consecutive wins
-WIN_STREAK_LOOSEN = 0.03      # loosen thresholds by this much
-WIN_STREAK_RESET_HOURS = 4    # reset the streak after N hours
+
+# === EXIT RULES (2026-09-23 v2) ===
+COLLECTIVE_TP_USD = 10.0
+PROFIT_TAKE_USD = 2.00        # close any profitable trade at $2
+PROFIT_HOLD_MINUTES = 2       # ...after 2 minutes open minimum
+
+# === ADAPTIVE SCOREBOARD ===
+ADAPTIVE_WINDOW = 5           # look at last N closed trades
+ADAPTIVE_LOOSEN_THRESHOLD = 0.60   # if win rate >= 60%, loosen by step
+ADAPTIVE_TIGHTEN_THRESHOLD = 0.40  # if win rate <= 40%, tighten by step
+ADAPTIVE_STEP = 0.02          # how much to move per cycle
+ADAPTIVE_MIN_PRIMARY = 0.35   # hard floor
+ADAPTIVE_MAX_PRIMARY = 0.50   # hard ceiling

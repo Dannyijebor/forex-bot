@@ -158,6 +158,50 @@ def open_session():
     return None, None
 
 
+def compute_adaptive_boost():
+    """
+    Look at the last N closed trades' win rate and return a threshold boost.
+    Positive = looser (more trades). Negative = tighter (fewer trades).
+    Bounded to [ADAPTIVE_MIN_PRIMARY, ADAPTIVE_MAX_PRIMARY].
+    """
+    p = Path(cfg.TRADES_CSV)
+    if not p.exists():
+        return 0.0, 0.0, "no_data"
+
+    try:
+        df = pd.read_csv(p)
+    except Exception:
+        return 0.0, 0.0, "read_fail"
+
+    if df.empty or "pnl_usd" not in df.columns:
+        return 0.0, 0.0, "empty"
+
+    closed = df.dropna(subset=["pnl_usd"]).copy()
+    if len(closed) < 3:
+        return 0.0, 0.0, "warming_up"
+
+    window = getattr(cfg, "ADAPTIVE_WINDOW", 5)
+    recent = closed.tail(window)
+    win_rate = (recent["pnl_usd"] > 0).mean()
+
+    step = getattr(cfg, "ADAPTIVE_STEP", 0.02)
+    loosen = getattr(cfg, "ADAPTIVE_LOOSEN_THRESHOLD", 0.60)
+    tighten = getattr(cfg, "ADAPTIVE_TIGHTEN_THRESHOLD", 0.40)
+    max_boost = getattr(cfg, "ADAPTIVE_MAX_PRIMARY", 0.50) - 0.42  # headroom above base
+
+    if win_rate >= loosen:
+        boost = min(step * 2, max_boost)   # double step if very high
+        state = "loosen"
+    elif win_rate <= tighten:
+        boost = -step
+        state = "tighten"
+    else:
+        boost = 0.0
+        state = "neutral"
+
+    return float(boost), float(win_rate), state
+
+
 def manage_positions(client, aid, open_positions):
     if not open_positions:
         return
@@ -233,7 +277,9 @@ def main():
                 log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
 
         # 3. Score all symbols
-        results = score_all(pairs, cross_daily)
+        threshold_boost, win_rate, adaptive_state = compute_adaptive_boost()
+        log("  ADAPTIVE: state=%s win_rate=%.2f boost=%+.3f" % (adaptive_state, win_rate, threshold_boost))
+        results = score_all(pairs, cross_daily, boost=threshold_boost)
         if not results:
             log("  No scoring results.")
             return
