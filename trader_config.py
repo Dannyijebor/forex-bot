@@ -52,15 +52,15 @@ MAX_TRADES_PER_HOUR = 2
 MAX_CONSECUTIVE_LOSSES = 2
 
 # === EXIT RULES (added 2026-09-23) ===
-COLLECTIVE_TP_USD = 10.0      # close all profitable trades if total unrealized >= $10
+COLLECTIVE_TP_USD = 50.0      # close all profitable trades if total unrealized >= $10
 
 # === EXIT + ADAPTIVE RULES (2026-09-23) ===
 COLLECTIVE_TP_USD = 10.0
 
 # === EXIT RULES (2026-09-23 v2) ===
 COLLECTIVE_TP_USD = 10.0
-PROFIT_TAKE_USD = 2.00        # close any profitable trade at $2
-PROFIT_HOLD_MINUTES = 2       # ...after 2 minutes open minimum
+PROFIT_TAKE_USD = 15.00        # close any profitable trade at $2
+PROFIT_HOLD_MINUTES = 5       # ...after 2 minutes open minimum
 
 # === ADAPTIVE SCOREBOARD ===
 ADAPTIVE_WINDOW = 5           # look at last N closed trades
