@@ -110,14 +110,23 @@ def safety_guards_pass(symbol, today_trades):
         log("  Global daily cap (%d/%d)." % (len(today_trades), daily_cap))
         return False
 
+    # Session-aware scaling of caps
+    sym_mult = 1.0
+    hourly_cap = getattr(cfg, "MAX_TRADES_PER_HOUR", 2)
+    if getattr(cfg, "SESSION_SCALING_ENABLED", False):
+        try:
+            _gname, sym_mult, hourly_cap, _gactive = cfg.session_profile(datetime.now(timezone.utc))
+        except Exception as _ge:
+            log("  session_profile failed: %s" % _ge)
+            sym_mult = 1.0
+
     if "symbol" in today_trades.columns and len(today_trades) > 0:
         sym_count = (today_trades["symbol"] == symbol).sum()
-        sym_cap = getattr(cfg, "MAX_TRADES_PER_SYMBOL_PER_DAY", 3)
+        base_sym_cap = getattr(cfg, "MAX_TRADES_PER_SYMBOL_PER_DAY", 15)
+        sym_cap = max(1, int(round(base_sym_cap * sym_mult)))
         if sym_count >= sym_cap:
-            log("  Per-symbol cap %s (%d/%d)." % (symbol, sym_count, sym_cap))
+            log("  Per-symbol cap %s (%d/%d, mult=%.1f)" % (symbol, sym_count, sym_cap, sym_mult))
             return False
-
-    hourly_cap = getattr(cfg, "MAX_TRADES_PER_HOUR", 2)
     if "opened_utc" in today_trades.columns and len(today_trades) > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
         recent = today_trades[today_trades["opened_utc"] >= cutoff]
@@ -297,6 +306,14 @@ def main():
         if kill_switch_active():
             log("KILL switch active.")
             return
+
+        # 0. Session-aware gate (skip weekends, log current session)
+        if getattr(cfg, "SESSION_SCALING_ENABLED", False):
+            _sname, _smult, _shcap, _sactive = cfg.session_profile(datetime.now(timezone.utc))
+            log("  Session: %s (sym_mult=%.1f, hourly=%d, active=%s)" % (_sname, _smult, _shcap, _sactive))
+            if not _sactive:
+                log("  Market closed (%s). Exiting." % _sname)
+                return
 
         # 1. Open broker session FIRST
         client, session = open_session()

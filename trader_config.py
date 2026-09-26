@@ -69,3 +69,38 @@ ADAPTIVE_TIGHTEN_THRESHOLD = 0.40  # if win rate <= 40%, tighten by step
 ADAPTIVE_STEP = 0.02          # how much to move per cycle
 ADAPTIVE_MIN_PRIMARY = 0.35   # hard floor
 ADAPTIVE_MAX_PRIMARY = 0.50   # hard ceiling
+
+# === SESSION-AWARE SCALING ===
+SESSION_SCALING_ENABLED = True
+
+def session_profile(now_utc):
+    """Return (name, sym_mult, hourly_cap, active) for given UTC datetime.
+
+    Windows (UTC):
+      Sydney 21:00-00:00 -> thin, 0.3x
+      Tokyo  00:00-07:00 -> moderate, 0.6x
+      London 07:00-12:00 -> rising, 1.0x
+      Overlap 12:00-16:00 -> peak liquidity, 1.7x  <- best signals
+      NY     16:00-21:00 -> fading, 0.8x
+      Weekend Fri 21:00 - Sun 21:00 -> closed
+    """
+    wd = now_utc.weekday()   # Mon=0 .. Sun=6
+    h = now_utc.hour
+    # Weekend: Fri 21:00 UTC -> Sun 21:00 UTC
+    if wd == 4 and h >= 21:
+        return ("weekend", 0.0, 0, False)
+    if wd == 5:
+        return ("weekend", 0.0, 0, False)
+    if wd == 6 and h < 21:
+        return ("weekend", 0.0, 0, False)
+    # Session tiers
+    if 12 <= h < 16:
+        return ("overlap", 1.7, 4, True)
+    if 7 <= h < 12:
+        return ("london", 1.0, 2, True)
+    if 16 <= h < 21:
+        return ("ny", 0.8, 2, True)
+    if 0 <= h < 7:
+        return ("tokyo", 0.6, 1, True)
+    return ("sydney", 0.3, 1, True)
+
