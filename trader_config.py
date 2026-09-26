@@ -104,3 +104,10 @@ def session_profile(now_utc):
         return ("tokyo", 0.6, 1, True)
     return ("sydney", 0.3, 1, True)
 
+# === LOSS-STREAK RECOVERY (decaying confidence penalty) ===
+LOSS_STREAK_PENALTY = 0.08            # threshold bump right after 2 losses
+LOSS_STREAK_HOLD_MIN = 10             # hold full penalty for this many minutes
+LOSS_STREAK_DECAY_HALFLIFE_MIN = 10   # then halve every N minutes
+LOSS_STREAK_PENALTY_ZERO = 0.005      # below this, snap to 0
+LOSS_STREAK_HARD_BLOCK = 4            # hard pause for the day if streak hits this
+

@@ -241,7 +241,7 @@ REGIME_ADJUST = {
 }
 
 
-def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.0):
+def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.0, penalty=0.0):
     """Score one symbol → returns (buy_signal, sell_signal, details)."""
     try:
         models = load_symbol_models(f"models/{symbol.lower()}_v5")
@@ -291,9 +291,9 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         regime, vol_ratio, trend = current_regime(df)
         adj = REGIME_ADJUST.get(regime, {"primary": 0.0, "meta": 0.0})
 
-        p_thresh = max(0.20, PRIMARY_THRESHOLD - boost + adj["primary"])
-        meta_thr_up = max(0.20, thr_up + adj["meta"])
-        meta_thr_down = max(0.20, thr_down + adj["meta"])
+        p_thresh = max(0.20, PRIMARY_THRESHOLD - boost + adj["primary"] + penalty)
+        meta_thr_up = max(0.20, thr_up + adj["meta"] + penalty)
+        meta_thr_down = max(0.20, thr_down + adj["meta"] + penalty)
 
         # Update thr_up/thr_down so the log shows the ADJUSTED values
         thr_up = meta_thr_up
@@ -326,7 +326,7 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         return None
 
 
-def score_all(pairs, cross_daily, boost=0.0):
+def score_all(pairs, cross_daily, boost=0.0, penalty=0.0):
     results = []
     for symbol in ["EURUSD", "GBPUSD", "USDJPY"]:
         primary = pairs.get(symbol)
@@ -337,7 +337,7 @@ def score_all(pairs, cross_daily, boost=0.0):
         cross2 = pairs.get(others[1])
         if cross1 is None or cross2 is None:
             continue
-        r = score_symbol(symbol, primary, cross1, cross2, cross_daily, boost=boost)
+        r = score_symbol(symbol, primary, cross1, cross2, cross_daily, boost=boost, penalty=penalty)
         if r:
             results.append(r)
     return results

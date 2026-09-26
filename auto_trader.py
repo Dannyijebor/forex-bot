@@ -104,6 +104,46 @@ def compute_tp_sl(price, atr_frac, pip, side,
     return tp, sl, tp_pips, sl_pips
 
 
+def compute_loss_streak_penalty(today_trades, now_utc):
+    """Return (penalty, streak, minutes_since_last_loss).
+
+    Consecutive losses beyond MAX_CONSECUTIVE_LOSSES add a threshold penalty
+    that decays over time. A win resets the streak. HARD_BLOCK stops the day.
+    """
+    if today_trades is None or len(today_trades) == 0:
+        return (0.0, 0, None)
+    if "pnl_usd" not in today_trades.columns:
+        return (0.0, 0, None)
+    closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
+    if len(closed) == 0:
+        return (0.0, 0, None)
+    streak = 0
+    for pnl in closed["pnl_usd"].iloc[::-1]:
+        if pnl <= 0:
+            streak += 1
+        else:
+            break
+    if streak < getattr(cfg, "MAX_CONSECUTIVE_LOSSES", 2):
+        return (0.0, streak, None)
+    try:
+        last_loss_time = pd.to_datetime(closed["opened_utc"].iloc[-1], utc=True)
+        minutes_since = (now_utc - last_loss_time).total_seconds() / 60.0
+    except Exception:
+        minutes_since = 0.0
+    base = getattr(cfg, "LOSS_STREAK_PENALTY", 0.08)
+    hold = getattr(cfg, "LOSS_STREAK_HOLD_MIN", 10)
+    halflife = getattr(cfg, "LOSS_STREAK_DECAY_HALFLIFE_MIN", 10)
+    zero = getattr(cfg, "LOSS_STREAK_PENALTY_ZERO", 0.005)
+    if minutes_since < hold:
+        penalty = base
+    else:
+        steps = (minutes_since - hold) / max(halflife, 1)
+        penalty = base * (0.5 ** steps)
+    if penalty < zero:
+        penalty = 0.0
+    return (penalty, streak, minutes_since)
+
+
 def safety_guards_pass(symbol, today_trades):
     daily_cap = getattr(cfg, "MAX_TRADES_PER_DAY", 100)
     if len(today_trades) >= daily_cap:
@@ -134,7 +174,7 @@ def safety_guards_pass(symbol, today_trades):
             log("  Hourly cap (%d/%d)." % (len(recent), hourly_cap))
             return False
 
-    max_streak = getattr(cfg, "MAX_CONSECUTIVE_LOSSES", 2)
+    hard_streak = getattr(cfg, "LOSS_STREAK_HARD_BLOCK", 4)
     if "pnl_usd" in today_trades.columns and len(today_trades) > 0:
         closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
         streak = 0
@@ -143,8 +183,8 @@ def safety_guards_pass(symbol, today_trades):
                 streak += 1
             else:
                 break
-        if streak >= max_streak:
-            log("  Loss streak %d/%d - pausing." % (streak, max_streak))
+        if streak >= hard_streak:
+            log("  HARD loss streak %d/%d - pausing for day." % (streak, hard_streak))
             return False
 
     return True
@@ -346,7 +386,14 @@ def main():
         # 3. Score all symbols
         threshold_boost, win_rate, adaptive_state = compute_adaptive_boost(client, aid)
         log("  ADAPTIVE: state=%s win_rate=%.2f boost=%+.3f" % (adaptive_state, win_rate, threshold_boost))
-        results = score_all(pairs, cross_daily, boost=threshold_boost)
+        _streak_trades = load_todays_trades()
+        _penalty, _streak, _mins_since = compute_loss_streak_penalty(
+            _streak_trades, datetime.now(timezone.utc))
+        if _streak >= 1:
+            _mins_str = ("%.0f" % _mins_since) if _mins_since is not None else "n/a"
+            log("  Loss streak=%d, penalty=+%.3f (last loss %s min ago)" % (
+                _streak, _penalty, _mins_str))
+        results = score_all(pairs, cross_daily, boost=threshold_boost, penalty=_penalty)
         if not results:
             log("  No scoring results.")
             return
