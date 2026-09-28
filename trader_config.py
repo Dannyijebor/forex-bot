@@ -110,5 +110,5 @@ LOSS_STREAK_HOLD_MIN = 10             # hold full penalty for this many minutes
 LOSS_STREAK_DECAY_HALFLIFE_MIN = 10   # then halve every N minutes
 LOSS_STREAK_PENALTY_ZERO = 0.005      # below this, snap to 0
 LOSS_STREAK_HARD_BLOCK = 4            # hard pause when streak hits this
-LOSS_STREAK_HARD_BLOCK_COOLDOWN_MIN = 120  # ...for this many minutes after last loss
+LOSS_STREAK_HARD_BLOCK_COOLDOWN_MIN = 30  # ...for this many minutes after last loss
 
