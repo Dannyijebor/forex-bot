@@ -175,6 +175,7 @@ def safety_guards_pass(symbol, today_trades):
             return False
 
     hard_streak = getattr(cfg, "LOSS_STREAK_HARD_BLOCK", 4)
+    hard_cooldown = getattr(cfg, "LOSS_STREAK_HARD_BLOCK_COOLDOWN_MIN", 120)
     if "pnl_usd" in today_trades.columns and len(today_trades) > 0:
         closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
         streak = 0
@@ -184,8 +185,19 @@ def safety_guards_pass(symbol, today_trades):
             else:
                 break
         if streak >= hard_streak:
-            log("  HARD loss streak %d/%d - pausing for day." % (streak, hard_streak))
-            return False
+            # Cooldown, not full-day pause
+            try:
+                last_loss_time = pd.to_datetime(closed["opened_utc"].iloc[-1], utc=True)
+                mins_since = (datetime.now(timezone.utc) - last_loss_time).total_seconds() / 60.0
+            except Exception:
+                mins_since = 0.0
+            if mins_since < hard_cooldown:
+                log("  HARD loss streak %d/%d - %.0f min cooldown remaining." % (
+                    streak, hard_streak, hard_cooldown - mins_since))
+                return False
+            else:
+                log("  HARD loss streak %d/%d expired (%.0f min elapsed) - resuming." % (
+                    streak, hard_streak, mins_since))
 
     return True
 
