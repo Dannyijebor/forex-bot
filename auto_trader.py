@@ -262,40 +262,111 @@ def compute_adaptive_boost(client=None, aid=None):
     return float(boost), float(win_rate), state
 
 
-def manage_positions(client, aid, open_positions):
+def check_model_invalidation(client, aid, open_positions, results):
+    """Close losing positions when the model's meta score for their direction
+    drops well below the threshold that triggered entry."""
+    if not getattr(cfg, "MODEL_AWARE_EXIT_ENABLED", False):
+        return
+    if not open_positions or not results:
+        return
+
+    min_age = getattr(cfg, "MODEL_AWARE_EXIT_MIN_AGE_MIN", 2)
+    max_loss = getattr(cfg, "MODEL_AWARE_EXIT_MAX_LOSS_USD", 8.0)
+    buffer   = getattr(cfg, "MODEL_AWARE_EXIT_META_BUFFER", 0.05)
+
+    for p in open_positions:
+        profit = getattr(p, "profit", 0) or 0
+        if profit >= 0:
+            continue  # only manage losers
+        if abs(profit) > max_loss:
+            continue  # too late, let SL handle it
+
+        ot = getattr(p, "open_time", None)
+        if not ot:
+            continue
+        try:
+            otd = datetime.fromisoformat(ot.replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - otd).total_seconds() / 60.0
+        except Exception:
+            continue
+        if age_min < min_age:
+            continue
+
+        sym = (p.symbol or "").replace("m", "").replace("M", "")
+        r = next((x for x in results if x.get("symbol") == sym), None)
+        if r is None:
+            continue
+
+        side = (p.side or "").upper()
+        if side == "BUY":
+            meta = r.get("meta_up", 0.0)
+            thr  = r.get("thr_up", 0.0)
+        elif side == "SELL":
+            meta = r.get("meta_down", 0.0)
+            thr  = r.get("thr_down", 0.0)
+        else:
+            continue
+
+        if meta < (thr - buffer):
+            log("  MODEL FLIP: %s %s %s age=%.1fmin pnl=$%.2f meta=%.3f < thr-buf=%.3f" % (
+                p.ticket, sym, side, age_min, profit, meta, thr - buffer))
+            close_position(client, aid, p.ticket, "model_flip")
+
+
+def manage_positions(client, aid, open_positions, results=None):
     if not open_positions:
         return
 
-    # --- Check 1: Collective profit guard ---
-    collective_tp = getattr(cfg, "COLLECTIVE_TP_USD", 10.0)
+    # --- Check 0: Model-aware early exit for losing trades ---
+    check_model_invalidation(client, aid, open_positions, results)
+
+    # --- Check 1: Collective profit guard (raised, requires 2+ positions) ---
+    collective_tp = getattr(cfg, "COLLECTIVE_TP_USD", 50.0)
+    profitable = [p for p in open_positions if (getattr(p, "profit", 0) or 0) > 0]
     total_profit = sum((getattr(p, "profit", 0) or 0) for p in open_positions)
-    if total_profit >= collective_tp:
-        log("  COLLECTIVE TP: total unrealized $%.2f >= $%.2f" % (total_profit, collective_tp))
+    if total_profit >= collective_tp and len(profitable) >= 2:
+        log("  COLLECTIVE TP: total $%.2f >= $%.2f across %d positions" % (
+            total_profit, collective_tp, len(profitable)))
         closed = 0
-        for p in open_positions:
-            profit = getattr(p, "profit", 0) or 0
-            if profit > 0:
-                if close_position(client, aid, p.ticket, "collective_tp"):
-                    closed += 1
+        for p in profitable:
+            if close_position(client, aid, p.ticket, "collective_tp"):
+                closed += 1
         log("  Closed %d profitable positions" % closed)
         return
 
-    # --- Check 2: Individual trade: age > 1 min AND profit >= $3 ---
-    min_hold = getattr(cfg, "PROFIT_HOLD_MINUTES", 1)
-    min_profit = getattr(cfg, "PROFIT_TAKE_USD", 3.0)
+    # --- Check 2: Size-aware individual profit-take ---
+    min_hold = getattr(cfg, "PROFIT_HOLD_MINUTES", 5)
+    per_vol = getattr(cfg, "PROFIT_TAKE_PER_VOLUME", 80.0)
     for p in open_positions:
-        open_time = getattr(p, "open_time", None)
-        if not open_time:
+        ot = getattr(p, "open_time", None)
+        if not ot:
             continue
         try:
-            ot = datetime.fromisoformat(open_time.replace("Z", "+00:00"))
-            age_min = (datetime.now(timezone.utc) - ot).total_seconds() / 60
+            otd = datetime.fromisoformat(ot.replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - otd).total_seconds() / 60
             profit = getattr(p, "profit", 0) or 0
-            if age_min >= min_hold and profit >= min_profit:
-                log("  PROFIT TAKE: %s age=%.1fmin profit=$%.2f" % (p.ticket, age_min, profit))
+            volume = float(getattr(p, "volume", 0.1) or 0.1)
+            profit_target = max(5.0, volume * per_vol)
+            if age_min >= min_hold and profit >= profit_target:
+                log("  PROFIT TAKE: %s age=%.1fmin vol=%.2f pnl=$%.2f >= $%.2f" % (
+                    p.ticket, age_min, volume, profit, profit_target))
                 close_position(client, aid, p.ticket, "time_profit")
         except Exception as e:
             log("  Hold check: %s" % e)
+
+
+def safe_account_snapshot(client, aid):
+    """Return account object or None. Never raises."""
+    try:
+        a = client.accounts.get(aid)
+        if a is None:
+            return None
+        if getattr(a, "account", None) is None:
+            return None
+        return a
+    except Exception as e:
+        log("  account fetch failed: %s" % e)
+        return None
 
 
 def reconcile_closed_trades(client, aid):
@@ -421,15 +492,21 @@ def main():
             ))
 
         # 4. Account state + position management (ALWAYS runs)
-        acct = client.accounts.get(aid)
+        acct = safe_account_snapshot(client, aid)
+        if acct is None:
+            log("  Session died before account fetch — skipping cycle (will retry).")
+            return
         equity = acct.account.equity
         open_positions = acct.positions or []
         log("  Equity $%.2f  Positions %d" % (equity, len(open_positions)))
 
-        manage_positions(client, aid, open_positions)
+        manage_positions(client, aid, open_positions, results)
 
         # Refresh state after possible closes
-        acct = client.accounts.get(aid)
+        acct = safe_account_snapshot(client, aid)
+        if acct is None:
+            log("  Session died after position mgmt — skipping signal.")
+            return
         open_positions = acct.positions or []
         equity = acct.account.equity
 

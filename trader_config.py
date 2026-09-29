@@ -52,13 +52,13 @@ MAX_TRADES_PER_HOUR = 2
 MAX_CONSECUTIVE_LOSSES = 2
 
 # === EXIT RULES (added 2026-09-23) ===
-COLLECTIVE_TP_USD = 50.0      # close all profitable trades if total unrealized >= $10
+COLLECTIVE_TP_USD = 50.0      # collective take-profit
 
 # === EXIT + ADAPTIVE RULES (2026-09-23) ===
-COLLECTIVE_TP_USD = 10.0
+COLLECTIVE_TP_USD = 50.0      # collective take-profit
 
 # === EXIT RULES (2026-09-23 v2) ===
-COLLECTIVE_TP_USD = 10.0
+COLLECTIVE_TP_USD = 50.0      # collective take-profit
 PROFIT_TAKE_USD = 15.00        # close any profitable trade at $2
 PROFIT_HOLD_MINUTES = 5       # ...after 2 minutes open minimum
 
@@ -111,4 +111,14 @@ LOSS_STREAK_DECAY_HALFLIFE_MIN = 10   # then halve every N minutes
 LOSS_STREAK_PENALTY_ZERO = 0.005      # below this, snap to 0
 LOSS_STREAK_HARD_BLOCK = 4            # hard pause when streak hits this
 LOSS_STREAK_HARD_BLOCK_COOLDOWN_MIN = 30  # ...for this many minutes after last loss
+
+# === EXIT LOGIC v2 (2026-09-29) ===
+# Size-aware profit-take: $ target scales with lot size
+PROFIT_TAKE_PER_VOLUME = 80.0   # profit_target = max(5, volume * 80)
+
+# Model-aware early exit: close losers when the model flips
+MODEL_AWARE_EXIT_ENABLED = True
+MODEL_AWARE_EXIT_MIN_AGE_MIN = 2      # don't exit in first N minutes
+MODEL_AWARE_EXIT_MAX_LOSS_USD = 8.0   # if loss > this, let SL handle it
+MODEL_AWARE_EXIT_META_BUFFER = 0.05   # meta must drop below (threshold - buffer)
 
