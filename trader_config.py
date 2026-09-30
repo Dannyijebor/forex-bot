@@ -73,6 +73,16 @@ ADAPTIVE_MAX_PRIMARY = 0.50   # hard ceiling
 # === SESSION-AWARE SCALING ===
 SESSION_SCALING_ENABLED = True
 
+# === BLOCKED TRADING WINDOWS (UTC, hour ranges [start, end)) ===
+# Post exit-v2 analysis (2026-09-30):
+#   19-21 UTC: NY close, thin liquidity, net -$19.61
+#   05-07 UTC: pre-London chop, net -$38.84 (3x USDJPY BUY SL sweeps)
+BLOCKED_HOURS_UTC = [
+    (19, 22),   # 8pm-11pm WAT
+    (5, 8),     # 6am-9am WAT
+]
+
+
 def session_profile(now_utc):
     """Return (name, sym_mult, hourly_cap, active) for given UTC datetime.
 
@@ -93,6 +103,11 @@ def session_profile(now_utc):
         return ("weekend", 0.0, 0, False)
     if wd == 6 and h < 21:
         return ("weekend", 0.0, 0, False)
+
+    # Blocked hours (skip trading entirely)
+    for start_h, end_h in BLOCKED_HOURS_UTC:
+        if start_h <= h < end_h:
+            return ("blocked", 0.0, 0, False)
     # Session tiers
     if 12 <= h < 16:
         return ("overlap", 1.7, 4, True)

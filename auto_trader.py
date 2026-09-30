@@ -435,7 +435,7 @@ def main():
             _sname, _smult, _shcap, _sactive = cfg.session_profile(datetime.now(timezone.utc))
             log("  Session: %s (sym_mult=%.1f, hourly=%d, active=%s)" % (_sname, _smult, _shcap, _sactive))
             if not _sactive:
-                log("  Market closed (%s). Exiting." % _sname)
+                log("  Not trading (%s). Exiting." % _sname)
                 return
 
         # 1. Open broker session FIRST
