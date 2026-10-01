@@ -262,6 +262,129 @@ def compute_adaptive_boost(client=None, aid=None):
     return float(boost), float(win_rate), state
 
 
+def log_signal(signal_dict):
+    """Append one row per symbol per tick to signals_log.csv."""
+    import csv
+    from pathlib import Path as _P
+    path = _P("signals_log.csv")
+    fields = ["ts_utc","symbol","regime","primary_up","primary_down",
+              "meta_up","meta_down","thr_primary","thr_meta_up","thr_meta_down",
+              "boost","penalty","buy_ok","sell_ok","traded","skip_reason",
+              "label","label_pnl_pips"]
+    exists = path.exists()
+    try:
+        with open(path, "a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            if not exists:
+                w.writeheader()
+            w.writerow({k: signal_dict.get(k, "") for k in fields})
+    except Exception as e:
+        log("  log_signal failed: %s" % e)
+
+
+def label_signals(pairs, lookahead_min=15, pip_sizes=None):
+    """For each unlabeled row in signals_log.csv, compute hypothetical outcome."""
+    from pathlib import Path as _P
+
+    if pip_sizes is None:
+        pip_sizes = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
+
+    path = _P("signals_log.csv")
+    if not path.exists():
+        return
+
+    df = pd.read_csv(path)
+    if "traded" not in df.columns:
+        return
+    if "label" not in df.columns:
+        df["label"] = ""
+    if "label_pnl_pips" not in df.columns:
+        df["label_pnl_pips"] = ""
+
+    candidates = df[(df["buy_ok"] == "Y") | (df["sell_ok"] == "Y")].copy()
+    candidates = candidates[candidates["label"] == ""]
+
+    if len(candidates) == 0:
+        return
+
+    updated = 0
+    now = datetime.now(timezone.utc)
+
+    for idx, row in candidates.iterrows():
+        sym = row["symbol"]
+        try:
+            ts = pd.to_datetime(row["ts_utc"], utc=True)
+        except Exception:
+            continue
+        if (now - ts).total_seconds() / 60 < lookahead_min:
+            continue
+
+        bars = pairs.get(sym)
+        if bars is None or len(bars) < 5:
+            continue
+
+        after = bars[bars.index >= ts]
+        if len(after) < 2:
+            continue
+
+        entry = float(after["Close"].iloc[0])
+        pip = pip_sizes.get(sym, 0.0001)
+        tp_pips = 15.0
+        sl_pips = 10.0
+
+        side = None
+        if row["buy_ok"] == "Y" and row["sell_ok"] != "Y":
+            side = "BUY"
+        elif row["sell_ok"] == "Y" and row["buy_ok"] != "Y":
+            side = "SELL"
+        elif row["buy_ok"] == "Y" and row["sell_ok"] == "Y":
+            mu = float(row.get("meta_up", 0) or 0)
+            md = float(row.get("meta_down", 0) or 0)
+            side = "BUY" if mu >= md else "SELL"
+
+        if side is None:
+            df.at[idx, "label"] = "no_signal"
+            updated += 1
+            continue
+
+        window = after.iloc[1:4]
+        tp_price = entry + tp_pips * pip if side == "BUY" else entry - tp_pips * pip
+        sl_price = entry - sl_pips * pip if side == "BUY" else entry + sl_pips * pip
+
+        label = "flat"
+        pnl_pips = 0.0
+        for _, bar in window.iterrows():
+            hi = float(bar["High"])
+            lo = float(bar["Low"])
+            if side == "BUY":
+                if hi >= tp_price:
+                    label, pnl_pips = "win", tp_pips
+                    break
+                if lo <= sl_price:
+                    label, pnl_pips = "loss", -sl_pips
+                    break
+            else:
+                if lo <= tp_price:
+                    label, pnl_pips = "win", tp_pips
+                    break
+                if hi >= sl_price:
+                    label, pnl_pips = "loss", -sl_pips
+                    break
+        else:
+            last_close = float(window["Close"].iloc[-1])
+            move = (last_close - entry) if side == "BUY" else (entry - last_close)
+            pnl_pips = move / pip
+
+        df.at[idx, "label"] = label
+        df.at[idx, "label_pnl_pips"] = "%.2f" % pnl_pips
+        updated += 1
+
+    # Always write back so new label columns exist even before any labels are set
+    df.to_csv(path, index=False)
+    if updated:
+        log("  Labelled %d signal(s)" % updated)
+
+
 def check_model_invalidation(client, aid, open_positions, results):
     """Close losing positions when the model's meta score for their direction
     drops well below the threshold that triggered entry."""
@@ -466,6 +589,12 @@ def main():
             if df is not None:
                 log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
 
+        # 2b. Label pending signals using fetched bars
+        try:
+            label_signals(pairs)
+        except Exception as e:
+            log("  label_signals failed: %s" % e)
+
         # 3. Score all symbols
         threshold_boost, win_rate, adaptive_state = compute_adaptive_boost(client, aid)
         log("  ADAPTIVE: state=%s win_rate=%.2f boost=%+.3f" % (adaptive_state, win_rate, threshold_boost))
@@ -490,6 +619,28 @@ def main():
                 r["primary_up"], r["meta_up"], r["thr_up"], buy_m,
                 r["primary_down"], r["meta_down"], r["thr_down"], sell_m,
             ))
+
+        # NEW: persist every signal to signals_log.csv (for offline training)
+        _sig_ts = datetime.now(timezone.utc).isoformat()
+        for r in results:
+            log_signal({
+                "ts_utc": _sig_ts,
+                "symbol": r.get("symbol", ""),
+                "regime": r.get("regime", ""),
+                "primary_up": "%.4f" % r.get("primary_up", 0.0),
+                "primary_down": "%.4f" % r.get("primary_down", 0.0),
+                "meta_up": "%.4f" % r.get("meta_up", 0.0),
+                "meta_down": "%.4f" % r.get("meta_down", 0.0),
+                "thr_primary": "",
+                "thr_meta_up": "%.4f" % r.get("thr_up", 0.0),
+                "thr_meta_down": "%.4f" % r.get("thr_down", 0.0),
+                "boost": "%.4f" % threshold_boost,
+                "penalty": "%.4f" % _penalty,
+                "buy_ok": "Y" if r.get("buy_qualifies") else "N",
+                "sell_ok": "Y" if r.get("sell_qualifies") else "N",
+                "traded": "",
+                "skip_reason": "",
+            })
 
         # 4. Account state + position management (ALWAYS runs)
         acct = safe_account_snapshot(client, aid)
