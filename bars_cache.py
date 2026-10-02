@@ -1,13 +1,9 @@
-"""bars_cache.py — append-only rolling M5 bar cache for retraining.
-
-Auto_trader calls cache_bars(pairs) every tick. Appends only the newest bar
-per symbol (dedup by timestamp). Capped at MAX_ROWS so files don't grow forever.
-"""
+"""bars_cache.py — append-only rolling M5 bar cache for retraining."""
 
 import pandas as pd
 from pathlib import Path
 
-MAX_ROWS = 200_000  # ~2 years of M5 bars per symbol
+MAX_ROWS = 200_000
 
 
 def cache_bars(pairs):
@@ -19,20 +15,33 @@ def cache_bars(pairs):
             continue
         try:
             path = Path("bars_cache_%s.csv" % sym)
-            latest = df.iloc[-1:].copy().reset_index()
 
-            # Normalize first column to "Date"
-            first_col = latest.columns[0]
-            if first_col != "Date":
-                latest = latest.rename(columns={first_col: "Date"})
+            # Extract the newest bar and force the index column to be "Date"
+            latest = df.iloc[-1:].reset_index()
+            latest = latest.rename(columns={latest.columns[0]: "Date"})
 
-            # Normalize OHLCV casing
-            for c in list(latest.columns):
-                if c.lower() in ("open", "high", "low", "close", "volume"):
-                    latest = latest.rename(columns={c: c.capitalize()})
+            # Canonicalize OHLCV column names
+            rename_map = {}
+            for c in latest.columns:
+                cl = str(c).lower()
+                if cl == "open":   rename_map[c] = "Open"
+                elif cl == "high": rename_map[c] = "High"
+                elif cl == "low":  rename_map[c] = "Low"
+                elif cl == "close":rename_map[c] = "Close"
+                elif cl == "volume":rename_map[c] = "Volume"
+            latest = latest.rename(columns=rename_map)
+
+            # Keep only expected columns
+            keep = ["Date", "Open", "High", "Low", "Close", "Volume"]
+            latest = latest[[c for c in keep if c in latest.columns]]
+
+            # Normalize Date to ISO string so both sides match for dedup
+            latest["Date"] = pd.to_datetime(latest["Date"], utc=True).astype(str)
 
             if path.exists():
                 old = pd.read_csv(path)
+                if "Date" in old.columns:
+                    old["Date"] = pd.to_datetime(old["Date"], utc=True).astype(str)
                 combined = pd.concat([old, latest], ignore_index=True)
                 combined = combined.drop_duplicates(subset=["Date"], keep="last")
                 combined = combined.sort_values("Date").tail(MAX_ROWS)
@@ -40,8 +49,9 @@ def cache_bars(pairs):
                 combined = latest
 
             combined.to_csv(path, index=False)
-        except Exception:
-            pass  # cache is best-effort; never crash the trading loop
+        except Exception as e:
+            # Do NOT swallow silently — this is what was hiding the bug
+            print("  cache_bars[%s] FAILED: %s: %s" % (sym, type(e).__name__, e))
 
 
 def load_cache(symbol):
