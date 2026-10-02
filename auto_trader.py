@@ -589,6 +589,13 @@ def main():
             if df is not None:
                 log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
 
+        # 2a. Cache bars for future retraining
+        try:
+            from bars_cache import cache_bars
+            cache_bars(pairs)
+        except Exception as e:
+            log("  cache_bars failed: %s" % e)
+
         # 2b. Label pending signals using fetched bars
         try:
             label_signals(pairs)

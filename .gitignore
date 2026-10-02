@@ -16,3 +16,5 @@ STOP
 # force 1790093259
 
 !cross_assets_daily.csv
+
+!signals_log.csv
