@@ -1,0 +1,32 @@
+name: Nightly Retrain
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Retrain (validation-gated)
+        run: python retrain_models.py
+      - name: Adaptive engine
+        run: python adaptive_engine.py
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add retrain_log.json adaptive_state.json signal_meta_model.json 2>/dev/null || true
+          git add models/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "Nightly retrain + adaptive update [skip ci]"
+          git push || echo "Nothing to push"
