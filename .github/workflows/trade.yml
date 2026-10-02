@@ -55,6 +55,7 @@ jobs:
           touch trades.csv
           git add trades.csv
           git add signals_log.csv 2>/dev/null || true
+          git add bars_cache_*.csv 2>/dev/null || true
           git add models/eurusd/recent_probs.json 2>/dev/null || true
           git add models/gbpusd/recent_probs.json 2>/dev/null || true
           git diff --staged --quiet || git commit -m "Update trades [skip ci]"
