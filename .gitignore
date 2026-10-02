@@ -18,3 +18,5 @@ STOP
 !cross_assets_daily.csv
 
 !signals_log.csv
+
+!bars_cache_*.csv
