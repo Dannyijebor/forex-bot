@@ -6,6 +6,18 @@ import numpy as np
 import pandas as pd
 
 from feature_engine_v2 import FEATURES_V2, build_features_v2
+try:
+    from feature_engine_v3 import build_features_v3
+    _HAS_V3 = True
+except Exception:
+    _HAS_V3 = False
+
+# Prefixes that only exist in v3's expanded feature set
+_V3_FEATURE_PREFIXES = (
+    "fib_", "h1_", "h4_", "mtf_", "bars_since_swing",
+    "dist_to_swing", "dist_to_round", "dist_to_biground",
+    "at_round", "at_biground", "strength_vs_peers", "is_swing_",
+)
 
 PIP_SIZES = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
 
@@ -246,7 +258,15 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
     try:
         models = load_symbol_models(f"models/{symbol.lower()}_v5")
 
-        df = build_features_v2(primary_df, cross1_df, cross2_df)
+        # Feature-version-aware: use v3 if the model was trained on v3-only features
+        _expected = set(models.get("features", []))
+        _needs_v3 = _HAS_V3 and any(
+            f.startswith(_V3_FEATURE_PREFIXES) for f in _expected
+        )
+        if _needs_v3:
+            df = build_features_v3(primary_df, cross1_df, cross2_df)
+        else:
+            df = build_features_v2(primary_df, cross1_df, cross2_df)
         df = add_order_flow_features(df)
 
         df = df.reset_index()
