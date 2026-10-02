@@ -253,6 +253,48 @@ REGIME_ADJUST = {
 }
 
 
+_ADAPTIVE_STATE_CACHE = {"mtime": 0, "data": None}
+
+
+def _load_adaptive_state():
+    """Load adaptive_state.json once (cached by mtime). Safe to call often."""
+    import json as _json
+    from pathlib import Path as _P
+    _p = _P("adaptive_state.json")
+    if not _p.exists():
+        return None
+    try:
+        mt = _p.stat().st_mtime
+        if _ADAPTIVE_STATE_CACHE["data"] is not None and _ADAPTIVE_STATE_CACHE["mtime"] == mt:
+            return _ADAPTIVE_STATE_CACHE["data"]
+        data = _json.loads(_p.read_text())
+        _ADAPTIVE_STATE_CACHE["mtime"] = mt
+        _ADAPTIVE_STATE_CACHE["data"] = data
+        return data
+    except Exception:
+        return None
+
+
+def _adaptive_adjust(symbol, regime):
+    """Return {bandit: float, opt_threshold: float|None} for this arm.
+
+    Only applies when sample-size gates are met, so it is a no-op on
+    empty/young state files.
+    """
+    out = {"bandit": 0.0, "opt_threshold": None}
+    state = _load_adaptive_state()
+    if not state:
+        return out
+    arm = (state.get("bandit") or {}).get("%s|%s" % (symbol, regime))
+    if arm and arm.get("n", 0) >= 15:
+        w = float(arm.get("weight", 1.0))
+        out["bandit"] = (1.0 - w) * 0.15
+    opt = (state.get("optimal_thresholds") or {}).get(symbol)
+    if opt and opt.get("n_passing", 0) >= 20:
+        out["opt_threshold"] = float(opt["threshold"])
+    return out
+
+
 def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.0, penalty=0.0):
     """Score one symbol → returns (buy_signal, sell_signal, details)."""
     try:
@@ -314,6 +356,14 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         p_thresh = max(0.20, PRIMARY_THRESHOLD - boost + adj["primary"] + penalty)
         meta_thr_up = max(0.20, thr_up + adj["meta"] + penalty)
         meta_thr_down = max(0.20, thr_down + adj["meta"] + penalty)
+
+        # Apply learned state from adaptive_engine.py (no-op until gated)
+        _a = _adaptive_adjust(symbol, regime)
+        meta_thr_up = max(0.20, meta_thr_up + _a["bandit"])
+        meta_thr_down = max(0.20, meta_thr_down + _a["bandit"])
+        if _a["opt_threshold"] is not None:
+            meta_thr_up = _a["opt_threshold"]
+            meta_thr_down = _a["opt_threshold"]
 
         # Update thr_up/thr_down so the log shows the ADJUSTED values
         thr_up = meta_thr_up
