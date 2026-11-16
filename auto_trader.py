@@ -298,8 +298,11 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
         return
     if "label" not in df.columns:
         df["label"] = ""
+    df["label"] = df["label"].astype(object)
+
     if "label_pnl_pips" not in df.columns:
         df["label_pnl_pips"] = ""
+    df["label_pnl_pips"] = df["label_pnl_pips"].astype(object)
 
     candidates = df[(df["buy_ok"] == "Y") | (df["sell_ok"] == "Y")].copy()
     candidates = candidates[candidates["label"].isna() | (candidates["label"] == "")]
