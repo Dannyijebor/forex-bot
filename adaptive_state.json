@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-11-16T15:18:41.024309+00:00",
-  "n_labeled": 11331,
+  "updated_utc": "2026-11-16T15:22:37.970260+00:00",
+  "n_labeled": 11333,
   "calibration": {
     "EURUSD": [
       {
@@ -20,16 +20,16 @@
       {
         "lo": 0.834,
         "hi": 0.849,
-        "n": 658,
-        "win_rate": 0.409,
-        "avg_pips": 0.22
+        "n": 664,
+        "win_rate": 0.407,
+        "avg_pips": 0.17
       },
       {
-        "lo": 0.849,
+        "lo": 0.85,
         "hi": 0.871,
-        "n": 659,
-        "win_rate": 0.378,
-        "avg_pips": -0.55
+        "n": 654,
+        "win_rate": 0.379,
+        "avg_pips": -0.52
       },
       {
         "lo": 0.871,
@@ -64,16 +64,16 @@
       {
         "lo": 0.793,
         "hi": 0.811,
-        "n": 769,
+        "n": 773,
         "win_rate": 0.326,
-        "avg_pips": -1.84
+        "avg_pips": -1.85
       },
       {
         "lo": 0.811,
         "hi": 0.983,
-        "n": 770,
-        "win_rate": 0.426,
-        "avg_pips": 0.65
+        "n": 767,
+        "win_rate": 0.428,
+        "avg_pips": 0.69
       }
     ],
     "USDJPY": [
@@ -138,9 +138,9 @@
     },
     "EURUSD|volatile": {
       "weight": 0.971,
-      "n": 572,
-      "win_rate": 0.343,
-      "avg_pips": -1.43,
+      "n": 573,
+      "win_rate": 0.342,
+      "avg_pips": -1.45,
       "reason": "negative_ev"
     },
     "GBPUSD|normal": {
@@ -164,9 +164,9 @@
     },
     "GBPUSD|volatile": {
       "weight": 1.073,
-      "n": 532,
-      "win_rate": 0.545,
-      "avg_pips": 3.63,
+      "n": 533,
+      "win_rate": 0.546,
+      "avg_pips": 3.65,
       "reason": "positive_ev"
     },
     "USDJPY|normal": {
@@ -202,12 +202,12 @@
     "EURUSD": {
       "threshold": 0.52,
       "ev_pips": 1.97,
-      "n_passing": 2955
+      "n_passing": 2956
     },
     "GBPUSD": {
-      "threshold": 0.48,
-      "ev_pips": 2.34,
-      "n_passing": 3814
+      "threshold": 0.3,
+      "ev_pips": 2.35,
+      "n_passing": 3849
     },
     "USDJPY": {
       "threshold": 0.76,
