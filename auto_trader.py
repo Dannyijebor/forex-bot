@@ -293,7 +293,7 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
     if not path.exists():
         return
 
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, low_memory=False)
     if "traded" not in df.columns:
         df["traded"] = ""
     df["traded"] = df["traded"].astype(object)
@@ -310,7 +310,7 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
     df["label_pnl_pips"] = df["label_pnl_pips"].astype(object)
 
     candidates = df[(df["buy_ok"] == "Y") | (df["sell_ok"] == "Y")].copy()
-    candidates = candidates[candidates["label"].isna() | (candidates["label"] == "")]
+    candidates = candidates[candidates["label"].isna() | (candidates["label"] == "") | (candidates["label"] == "flat")]
     candidates = candidates.head(500)  # cap backfill per cycle to stay inside timeout
 
     if len(candidates) == 0:
@@ -356,7 +356,7 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
             updated += 1
             continue
 
-        window = after.iloc[1:4]
+        window = after.iloc[1:48]  # 4 hours lookahead
         tp_price = entry + tp_pips * pip if side == "BUY" else entry - tp_pips * pip
         sl_price = entry - sl_pips * pip if side == "BUY" else entry + sl_pips * pip
 
