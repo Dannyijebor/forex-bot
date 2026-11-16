@@ -1,125 +1,125 @@
 {
-  "updated_utc": "2026-11-16T13:16:47.325517+00:00",
-  "n_labeled": 10411,
+  "updated_utc": "2026-11-16T13:18:32.605689+00:00",
+  "n_labeled": 10757,
   "calibration": {
     "EURUSD": [
       {
         "lo": 0.301,
-        "hi": 0.818,
-        "n": 609,
-        "win_rate": 0.46,
-        "avg_pips": 1.49
+        "hi": 0.817,
+        "n": 627,
+        "win_rate": 0.443,
+        "avg_pips": 1.08
       },
       {
-        "lo": 0.819,
+        "lo": 0.817,
         "hi": 0.834,
-        "n": 607,
-        "win_rate": 0.56,
-        "avg_pips": 4.0
+        "n": 625,
+        "win_rate": 0.579,
+        "avg_pips": 4.48
       },
       {
-        "lo": 0.835,
+        "lo": 0.834,
         "hi": 0.849,
-        "n": 604,
-        "win_rate": 0.402,
-        "avg_pips": 0.06
+        "n": 626,
+        "win_rate": 0.412,
+        "avg_pips": 0.3
       },
       {
         "lo": 0.849,
-        "hi": 0.87,
-        "n": 606,
-        "win_rate": 0.378,
-        "avg_pips": -0.55
+        "hi": 0.869,
+        "n": 627,
+        "win_rate": 0.37,
+        "avg_pips": -0.75
       },
       {
-        "lo": 0.87,
+        "lo": 0.869,
         "hi": 0.972,
-        "n": 607,
-        "win_rate": 0.468,
-        "avg_pips": 1.7
+        "n": 625,
+        "win_rate": 0.467,
+        "avg_pips": 1.68
       }
     ],
     "GBPUSD": [
       {
         "lo": 0.42,
-        "hi": 0.751,
-        "n": 711,
-        "win_rate": 0.619,
-        "avg_pips": 5.47
+        "hi": 0.75,
+        "n": 738,
+        "win_rate": 0.604,
+        "avg_pips": 5.11
       },
       {
-        "lo": 0.751,
-        "hi": 0.774,
-        "n": 709,
-        "win_rate": 0.646,
-        "avg_pips": 6.15
+        "lo": 0.75,
+        "hi": 0.773,
+        "n": 731,
+        "win_rate": 0.633,
+        "avg_pips": 5.83
       },
       {
-        "lo": 0.774,
-        "hi": 0.793,
-        "n": 712,
-        "win_rate": 0.501,
-        "avg_pips": 2.54
+        "lo": 0.773,
+        "hi": 0.792,
+        "n": 736,
+        "win_rate": 0.515,
+        "avg_pips": 2.87
       },
       {
         "lo": 0.793,
         "hi": 0.81,
-        "n": 709,
-        "win_rate": 0.315,
-        "avg_pips": -2.14
+        "n": 737,
+        "win_rate": 0.322,
+        "avg_pips": -1.96
       },
       {
         "lo": 0.81,
-        "hi": 0.931,
-        "n": 705,
-        "win_rate": 0.434,
-        "avg_pips": 0.85
+        "hi": 0.983,
+        "n": 730,
+        "win_rate": 0.437,
+        "avg_pips": 0.92
       }
     ],
     "USDJPY": [
       {
         "lo": 0.354,
         "hi": 0.759,
-        "n": 769,
-        "win_rate": 0.315,
-        "avg_pips": -2.13
+        "n": 791,
+        "win_rate": 0.321,
+        "avg_pips": -1.97
       },
       {
         "lo": 0.759,
         "hi": 0.776,
-        "n": 764,
-        "win_rate": 0.619,
-        "avg_pips": 5.48
+        "n": 793,
+        "win_rate": 0.61,
+        "avg_pips": 5.26
       },
       {
-        "lo": 0.776,
+        "lo": 0.777,
         "hi": 0.792,
-        "n": 769,
-        "win_rate": 0.566,
-        "avg_pips": 4.14
+        "n": 789,
+        "win_rate": 0.559,
+        "avg_pips": 3.97
       },
       {
         "lo": 0.792,
-        "hi": 0.81,
-        "n": 765,
-        "win_rate": 0.593,
-        "avg_pips": 4.84
+        "hi": 0.811,
+        "n": 791,
+        "win_rate": 0.58,
+        "avg_pips": 4.51
       },
       {
         "lo": 0.811,
-        "hi": 0.925,
-        "n": 765,
-        "win_rate": 0.434,
-        "avg_pips": 0.85
+        "hi": 0.929,
+        "n": 791,
+        "win_rate": 0.426,
+        "avg_pips": 0.65
       }
     ]
   },
   "bandit": {
     "EURUSD|normal": {
       "weight": 1.0,
-      "n": 2321,
-      "win_rate": 0.48,
-      "avg_pips": 1.99,
+      "n": 2369,
+      "win_rate": 0.476,
+      "avg_pips": 1.9,
       "reason": "neutral"
     },
     "EURUSD|quiet": {
@@ -137,15 +137,15 @@
       "reason": "neutral"
     },
     "EURUSD|volatile": {
-      "weight": 0.96,
-      "n": 487,
-      "win_rate": 0.32,
-      "avg_pips": -1.99,
+      "weight": 0.974,
+      "n": 536,
+      "win_rate": 0.349,
+      "avg_pips": -1.28,
       "reason": "negative_ev"
     },
     "GBPUSD|normal": {
       "weight": 1.0,
-      "n": 3011,
+      "n": 3083,
       "win_rate": 0.492,
       "avg_pips": 2.3,
       "reason": "neutral"
@@ -163,24 +163,24 @@
       "reason": "positive_ev"
     },
     "GBPUSD|volatile": {
-      "weight": 1.086,
-      "n": 435,
-      "win_rate": 0.572,
-      "avg_pips": 4.31,
+      "weight": 1.079,
+      "n": 489,
+      "win_rate": 0.558,
+      "avg_pips": 3.96,
       "reason": "positive_ev"
     },
     "USDJPY|normal": {
       "weight": 1.0,
-      "n": 2986,
-      "win_rate": 0.511,
-      "avg_pips": 2.77,
+      "n": 3081,
+      "win_rate": 0.506,
+      "avg_pips": 2.64,
       "reason": "neutral"
     },
     "USDJPY|quiet": {
       "weight": 1.0,
-      "n": 283,
-      "win_rate": 0.417,
-      "avg_pips": 0.42,
+      "n": 291,
+      "win_rate": 0.405,
+      "avg_pips": 0.14,
       "reason": "neutral"
     },
     "USDJPY|trending": {
@@ -191,28 +191,28 @@
       "reason": "neutral"
     },
     "USDJPY|volatile": {
-      "weight": 1.061,
-      "n": 501,
-      "win_rate": 0.523,
-      "avg_pips": 3.07,
-      "reason": "positive_ev"
+      "weight": 1.0,
+      "n": 521,
+      "win_rate": 0.514,
+      "avg_pips": 2.86,
+      "reason": "neutral"
     }
   },
   "optimal_thresholds": {
     "EURUSD": {
       "threshold": 0.52,
-      "ev_pips": 2.26,
-      "n_passing": 2749
+      "ev_pips": 2.17,
+      "n_passing": 2803
     },
     "GBPUSD": {
-      "threshold": 0.3,
-      "ev_pips": 2.58,
-      "n_passing": 3546
+      "threshold": 0.42,
+      "ev_pips": 2.55,
+      "n_passing": 3671
     },
     "USDJPY": {
       "threshold": 0.76,
-      "ev_pips": 3.8,
-      "n_passing": 3037
+      "ev_pips": 3.59,
+      "n_passing": 3143
     }
   },
   "meta_model_trained": true
