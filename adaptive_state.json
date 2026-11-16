@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-11-16T14:00:48.365983+00:00",
-  "n_labeled": 11313,
+  "updated_utc": "2026-11-16T14:02:40.031603+00:00",
+  "n_labeled": 11314,
   "calibration": {
     "EURUSD": [
       {
@@ -101,9 +101,9 @@
       {
         "lo": 0.793,
         "hi": 0.812,
-        "n": 837,
+        "n": 838,
         "win_rate": 0.55,
-        "avg_pips": 3.74
+        "avg_pips": 3.75
       },
       {
         "lo": 0.812,
@@ -192,9 +192,9 @@
     },
     "USDJPY|volatile": {
       "weight": 1.0,
-      "n": 585,
-      "win_rate": 0.513,
-      "avg_pips": 2.82,
+      "n": 586,
+      "win_rate": 0.514,
+      "avg_pips": 2.84,
       "reason": "neutral"
     }
   },
@@ -211,8 +211,8 @@
     },
     "USDJPY": {
       "threshold": 0.76,
-      "ev_pips": 3.43,
-      "n_passing": 3335
+      "ev_pips": 3.44,
+      "n_passing": 3336
     }
   },
   "meta_model_trained": true
