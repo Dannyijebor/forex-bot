@@ -7,10 +7,14 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
+concurrency:
+  group: trade-bot
+  cancel-in-progress: false
+
 jobs:
   trade:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +59,7 @@ jobs:
           touch trades.csv
           git add trades.csv
           git add signals_log.csv 2>/dev/null || true
+              git add adaptive_state.json 2>/dev/null || true
           git add bars_cache_*.csv 2>/dev/null || true
           git add models/eurusd/recent_probs.json 2>/dev/null || true
           git add models/gbpusd/recent_probs.json 2>/dev/null || true

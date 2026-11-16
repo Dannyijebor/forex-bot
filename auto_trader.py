@@ -302,7 +302,8 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
         df["label_pnl_pips"] = ""
 
     candidates = df[(df["buy_ok"] == "Y") | (df["sell_ok"] == "Y")].copy()
-    candidates = candidates[candidates["label"] == ""]
+    candidates = candidates[candidates["label"].isna() | (candidates["label"] == "")]
+    candidates = candidates.head(500)  # cap backfill per cycle to stay inside timeout
 
     if len(candidates) == 0:
         return
@@ -380,6 +381,25 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
         updated += 1
 
     # Always write back so new label columns exist even before any labels are set
+    # Mark signals that became trades (cross-ref trades.csv)
+    try:
+        _tp = _P("trades.csv")
+        if _tp.exists():
+            _tr_df = pd.read_csv(_tp)
+            if len(_tr_df) and "opened_utc" in _tr_df.columns:
+                _tr_df["opened_utc"] = pd.to_datetime(_tr_df["opened_utc"], utc=True, errors="coerce")
+                _sig_ts = pd.to_datetime(df["ts_utc"], utc=True, errors="coerce")
+                _marked = 0
+                for _, _t in _tr_df.iterrows():
+                    _m = (df["symbol"] == _t["symbol"]) & ((_sig_ts - _t["opened_utc"]).abs() < pd.Timedelta(seconds=10))
+                    if _m.any() and (df.loc[_m, "traded"] != "Y").any():
+                        df.loc[_m, "traded"] = "Y"
+                        _marked += int(_m.sum())
+                if _marked:
+                    log("  Marked %d traded signal(s)" % _marked)
+    except Exception as _e:
+        log("  mark traded failed: %s" % _e)
+
     df.to_csv(path, index=False)
     if updated:
         log("  Labelled %d signal(s)" % updated)
@@ -604,6 +624,11 @@ def main():
 
         # 3. Score all symbols
         threshold_boost, win_rate, adaptive_state = compute_adaptive_boost(client, aid)
+        try:
+            import adaptive_engine as _ae
+            _ae.update_state()
+        except Exception as _e:
+            log("  adaptive_engine.update failed: %s" % _e)
         log("  ADAPTIVE: state=%s win_rate=%.2f boost=%+.3f" % (adaptive_state, win_rate, threshold_boost))
         _streak_trades = load_todays_trades()
         _penalty, _streak, _mins_since = compute_loss_streak_penalty(
