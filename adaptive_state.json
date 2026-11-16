@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-11-16T18:58:41.677578+00:00",
-  "n_labeled": 11737,
+  "updated_utc": "2026-11-16T22:00:44.982456+00:00",
+  "n_labeled": 11738,
   "calibration": {
     "EURUSD": [
       {
@@ -20,16 +20,16 @@
       {
         "lo": 0.834,
         "hi": 0.849,
-        "n": 684,
+        "n": 687,
         "win_rate": 0.406,
-        "avg_pips": 0.16
+        "avg_pips": 0.15
       },
       {
         "lo": 0.849,
         "hi": 0.87,
-        "n": 687,
-        "win_rate": 0.384,
-        "avg_pips": -0.39
+        "n": 685,
+        "win_rate": 0.385,
+        "avg_pips": -0.36
       },
       {
         "lo": 0.87,
@@ -138,9 +138,9 @@
     },
     "EURUSD|volatile": {
       "weight": 0.969,
-      "n": 584,
-      "win_rate": 0.337,
-      "avg_pips": -1.57,
+      "n": 585,
+      "win_rate": 0.338,
+      "avg_pips": -1.54,
       "reason": "negative_ev"
     },
     "GBPUSD|normal": {
@@ -202,7 +202,7 @@
     "EURUSD": {
       "threshold": 0.52,
       "ev_pips": 1.83,
-      "n_passing": 3081
+      "n_passing": 3082
     },
     "GBPUSD": {
       "threshold": 0.3,
