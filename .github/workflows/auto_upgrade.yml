@@ -1,0 +1,42 @@
+name: Auto-Upgrade Bot
+
+on:
+  workflow_dispatch: # Triggered ONLY by cron-job.org
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Upgrade Script
+        run: python upgrade_bot.py
+
+      - name: Check for changes and Retrain
+        run: |
+          if git diff --quiet; then
+            echo "No changes made. Backfill not ready yet."
+            exit 0
+          fi
+          
+          echo "Changes detected! Upgrading bot and retraining..."
+          python retrain_models.py
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add feature_engine_v3.py retrain_models.py models/ adaptive_state.json
+          git commit -m "feat: auto-inject session awareness and retrain [skip ci]"
+          git push
