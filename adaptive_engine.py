@@ -32,7 +32,7 @@ def load_labeled():
     if not LOG_FILE.exists():
         return None
     try:
-        df = pd.read_csv(LOG_FILE)
+        df = pd.read_csv(LOG_FILE, low_memory=False)
     except Exception:
         return None
     if "label" not in df.columns or "label_pnl_pips" not in df.columns:

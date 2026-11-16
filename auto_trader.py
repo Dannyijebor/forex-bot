@@ -295,7 +295,12 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
 
     df = pd.read_csv(path)
     if "traded" not in df.columns:
-        return
+        df["traded"] = ""
+    df["traded"] = df["traded"].astype(object)
+
+    if "skip_reason" not in df.columns:
+        df["skip_reason"] = ""
+    df["skip_reason"] = df["skip_reason"].astype(object)
     if "label" not in df.columns:
         df["label"] = ""
     df["label"] = df["label"].astype(object)
