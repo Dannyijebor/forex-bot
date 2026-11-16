@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-11-16T15:16:41.155039+00:00",
-  "n_labeled": 11329,
+  "updated_utc": "2026-11-16T15:18:41.024309+00:00",
+  "n_labeled": 11331,
   "calibration": {
     "EURUSD": [
       {
@@ -27,9 +27,9 @@
       {
         "lo": 0.849,
         "hi": 0.871,
-        "n": 658,
+        "n": 659,
         "win_rate": 0.378,
-        "avg_pips": -0.54
+        "avg_pips": -0.55
       },
       {
         "lo": 0.871,
@@ -80,16 +80,16 @@
       {
         "lo": 0.354,
         "hi": 0.76,
-        "n": 838,
-        "win_rate": 0.342,
-        "avg_pips": -1.44
+        "n": 842,
+        "win_rate": 0.343,
+        "avg_pips": -1.42
       },
       {
         "lo": 0.76,
         "hi": 0.777,
-        "n": 840,
+        "n": 836,
         "win_rate": 0.612,
-        "avg_pips": 5.3
+        "avg_pips": 5.31
       },
       {
         "lo": 0.777,
@@ -101,9 +101,9 @@
       {
         "lo": 0.793,
         "hi": 0.812,
-        "n": 834,
-        "win_rate": 0.552,
-        "avg_pips": 3.79
+        "n": 835,
+        "win_rate": 0.551,
+        "avg_pips": 3.77
       },
       {
         "lo": 0.812,
@@ -137,10 +137,10 @@
       "reason": "neutral"
     },
     "EURUSD|volatile": {
-      "weight": 0.972,
-      "n": 571,
+      "weight": 0.971,
+      "n": 572,
       "win_rate": 0.343,
-      "avg_pips": -1.42,
+      "avg_pips": -1.43,
       "reason": "negative_ev"
     },
     "GBPUSD|normal": {
@@ -171,9 +171,9 @@
     },
     "USDJPY|normal": {
       "weight": 1.0,
-      "n": 3211,
+      "n": 3212,
       "win_rate": 0.505,
-      "avg_pips": 2.64,
+      "avg_pips": 2.63,
       "reason": "neutral"
     },
     "USDJPY|quiet": {
@@ -201,8 +201,8 @@
   "optimal_thresholds": {
     "EURUSD": {
       "threshold": 0.52,
-      "ev_pips": 1.98,
-      "n_passing": 2954
+      "ev_pips": 1.97,
+      "n_passing": 2955
     },
     "GBPUSD": {
       "threshold": 0.48,
@@ -211,8 +211,8 @@
     },
     "USDJPY": {
       "threshold": 0.76,
-      "ev_pips": 3.47,
-      "n_passing": 3345
+      "ev_pips": 3.46,
+      "n_passing": 3346
     }
   },
   "meta_model_trained": true
