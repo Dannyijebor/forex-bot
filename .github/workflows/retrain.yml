@@ -19,7 +19,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Retrain (validation-gated)
-        run: python quantum_dna.py
+        run: python council_engine.py
+          python quantum_dna.py
           python retrain_models.py
       - name: Adaptive engine
         run: python adaptive_engine.py
@@ -28,6 +29,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add retrain_log.json adaptive_state.json signal_meta_model.json 2>/dev/null || true
+          git add council_state.json
           git add winning_dna.json
           git add models/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "Nightly retrain + adaptive update [skip ci]"

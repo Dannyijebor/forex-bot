@@ -253,7 +253,10 @@ def get_dynamic_sl_tp(df, side):
     return max(15.0, atr_pips * 2.0), max(10.0, atr_pips * 1.0)
 
 def apply_contrarian_logic(symbol, side):
-    flip_allowed = QUANTUM_DNA.get(f"flip_buy_{symbol.lower()}", 1)
+    # COUNCIL CHAMPION LOGIC
+    champ_dna = COUNCIL_STATE["champion"]["dna"]
+    flip_allowed = champ_dna.get("flip_buy", 1)
+    
     if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY" and flip_allowed == 1:
         print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
         return "SELL"
@@ -286,6 +289,16 @@ if os.path.exists("winning_dna.json"):
         QUANTUM_DNA = json.load(f)
         print(f"  [Quantum] Loaded Evolved DNA: {QUANTUM_DNA}")
 # --------------------------------
+
+
+import json
+# --- COUNCIL OF MODELS: CHAMPION STATE ---
+COUNCIL_STATE = {"champion": {"dna": {"thresh": 0.65, "flip_buy": 1}}}
+if os.path.exists("council_state.json"):
+    with open("council_state.json", "r") as f:
+        COUNCIL_STATE = json.load(f)
+        print(f"  [Council] Active Champion: {COUNCIL_STATE['champion']['id']} | DNA: {COUNCIL_STATE['champion']['dna']}")
+# -----------------------------------------
 
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
