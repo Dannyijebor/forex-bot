@@ -257,10 +257,6 @@ def apply_contrarian_logic(symbol, side):
     champ_dna = COUNCIL_STATE["champion"]["dna"]
     flip_allowed = champ_dna.get("flip_buy", 1)
     
-    # Check if the Champion DNA explicitly blocks this setup
-    if champ_dna.get("block_pair") == f"{sym}_{side}":
-        df.at[idx, "label"] = "blocked_by_council"
-        continue
     if champ_dna.get("block_hour") == ts.hour:
         df.at[idx, "label"] = "blocked_by_hour"
         continue
@@ -444,6 +440,19 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
 
         if side is not None:
             side = apply_contrarian_logic(sym, side)
+        
+        # --- COUNCIL BLOCKING LOGIC (INSIDE THE LOOP) ---
+        champ_dna = COUNCIL_STATE["champion"]["dna"]
+        if champ_dna.get("block_pair") == f"{sym}_{side}":
+            df.at[idx, "label"] = "blocked_by_council"
+            continue
+        if champ_dna.get("block_hour") == ts.hour:
+            df.at[idx, "label"] = "blocked_by_hour"
+            continue
+        if champ_dna.get("block_regime") == row.get("regime"):
+            df.at[idx, "label"] = "blocked_by_regime"
+            continue
+        # ------------------------------------------------
         if side is None:
             df.at[idx, "label"] = "no_signal"
             updated += 1
