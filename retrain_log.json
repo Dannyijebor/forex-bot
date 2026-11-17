@@ -1,0 +1,68 @@
+{
+  "ts_utc": "2026-11-17T05:21:07.680076+00:00",
+  "results": [
+    {
+      "symbol": "EURUSD",
+      "status": "deployed",
+      "reason": "no_baseline",
+      "metrics": {
+        "up": {
+          "auc": 0.4289,
+          "sim_pnl_pips": 730,
+          "max_dd_pips": -80.0,
+          "n_train": 263,
+          "n_val": 112
+        },
+        "down": {
+          "auc": 0.4806,
+          "sim_pnl_pips": 825,
+          "max_dd_pips": -65.0,
+          "n_train": 253,
+          "n_val": 110
+        }
+      }
+    },
+    {
+      "symbol": "GBPUSD",
+      "status": "deployed",
+      "reason": "no_baseline",
+      "metrics": {
+        "up": {
+          "auc": 0.4258,
+          "sim_pnl_pips": 1350,
+          "max_dd_pips": -65.0,
+          "n_train": 316,
+          "n_val": 155
+        },
+        "down": {
+          "auc": 0.6162,
+          "sim_pnl_pips": 965,
+          "max_dd_pips": -170.0,
+          "n_train": 302,
+          "n_val": 126
+        }
+      }
+    },
+    {
+      "symbol": "USDJPY",
+      "status": "deployed",
+      "reason": "no_baseline",
+      "metrics": {
+        "up": {
+          "auc": 0.5317,
+          "sim_pnl_pips": 2105,
+          "max_dd_pips": -80.0,
+          "n_train": 635,
+          "n_val": 252
+        },
+        "down": {
+          "auc": 0.5796,
+          "sim_pnl_pips": 1530,
+          "max_dd_pips": -140.0,
+          "n_train": 651,
+          "n_val": 252
+        }
+      }
+    }
+  ]
+}

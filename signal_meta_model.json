@@ -1,0 +1,42 @@
+{
+  "features": [
+    "meta_max",
+    "primary_max",
+    "boost",
+    "penalty",
+    "hour_sin",
+    "hour_cos",
+    "sym_GBPUSD",
+    "sym_USDJPY",
+    "reg_quiet",
+    "reg_trending",
+    "reg_volatile"
+  ],
+  "coefficients": [
+    0.07383,
+    -0.07202,
+    0.01159,
+    -0.00064,
+    0.21851,
+    -0.03121,
+    0.09471,
+    0.10455,
+    -0.06648,
+    -0.02498,
+    -0.06375
+  ],
+  "intercept": -0.15869,
+  "n_train": 11742,
+  "train_win_rate": 0.48,
+  "symbols": [
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY"
+  ],
+  "regimes": [
+    "normal",
+    "quiet",
+    "trending",
+    "volatile"
+  ]
+}
