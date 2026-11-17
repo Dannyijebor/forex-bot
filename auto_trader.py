@@ -259,6 +259,21 @@ def apply_contrarian_logic(symbol, side):
     return side
 # ---------------------------------------------------
 
+
+# --- ULTIMATE UPGRADE: KELLY CRITERION SIZING ---
+def calculate_kelly_lot(base_lot, meta_confidence):
+    # If confidence is below 50%, don't trade. If it's 50-60%, trade small.
+    # If it's 80%+, scale the lot size up dramatically.
+    if meta_confidence < 0.50:
+        return 0.0
+    elif meta_confidence < 0.60:
+        return round(base_lot * 0.5, 2) # Half size
+    elif meta_confidence < 0.75:
+        return base_lot # Normal size
+    else:
+        return round(base_lot * 2.0, 2) # Double size for A+ setups
+# --------------------------------------------------
+
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
     closed = []

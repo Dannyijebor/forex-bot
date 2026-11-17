@@ -233,5 +233,28 @@ def main():
         # ... (Actual LightGBM regressor code handled internally by retrain_models.py)
     # --------------------------------------------
 
+
+    # --- ULTIMATE UPGRADE: WALK-FORWARD AUTOSPY ---
+    print("\n=== 🧠 AUTOPSY REPORT: WHY DID WE LOSE? ===")
+    try:
+        import lightgbm as lgb
+        if 'model' in locals() and hasattr(model, 'feature_importances_'):
+            feat_names = X.columns
+            importances = model.feature_importances_
+            # Sort ascending to find the biggest LOSS drivers
+            sorted_imp = sorted(zip(feat_names, importances), key=lambda x: x[1], reverse=True)
+            print("Top 3 WINNING Drivers (What we should lean into):")
+            for name, imp in sorted_imp[:3]:
+                print(f"  -> {name} (Score: {imp})")
+            
+            print("\nTop 3 LOSING Drivers (What we must avoid):")
+            # If your label is 1 for win and 0 for loss, look at the bottom features
+            for name, imp in sorted_imp[-3:]:
+                print(f"  -> {name} (Score: {imp})")
+    except Exception as e:
+        print("Autopsy failed:", e)
+    print("============================================\n")
+    # ---------------------------------------------------
+
 if __name__ == "__main__":
     main()
