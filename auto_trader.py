@@ -256,14 +256,7 @@ def apply_contrarian_logic(symbol, side):
     # COUNCIL CHAMPION LOGIC
     champ_dna = COUNCIL_STATE["champion"]["dna"]
     flip_allowed = champ_dna.get("flip_buy", 1)
-    
-    if champ_dna.get("block_hour") == ts.hour:
-        df.at[idx, "label"] = "blocked_by_hour"
-        continue
-    if champ_dna.get("block_regime") == row.get("regime"):
-        df.at[idx, "label"] = "blocked_by_regime"
-        continue
-    
+
     if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY" and flip_allowed == 1:
         print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
         return "SELL"
@@ -453,6 +446,8 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
             df.at[idx, "label"] = "blocked_by_regime"
             continue
         # ------------------------------------------------
+        
+
         if side is None:
             df.at[idx, "label"] = "no_signal"
             updated += 1
