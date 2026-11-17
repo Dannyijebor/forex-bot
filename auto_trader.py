@@ -431,11 +431,15 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
             md = float(row.get("meta_down", 0) or 0)
             side = "BUY" if mu >= md else "SELL"
 
-        if side is not None:
-            side = apply_contrarian_logic(sym, side)
-        
-        # --- COUNCIL BLOCKING LOGIC (INSIDE THE LOOP) ---
+        if side is None:
+            df.at[idx, "label"] = "no_signal"
+            updated += 1
+            continue
+
+        # --- COUNCIL CHAMPION LOGIC (APPLIED AFTER SIDE IS DETERMINED) ---
+        side = apply_contrarian_logic(sym, side)
         champ_dna = COUNCIL_STATE["champion"]["dna"]
+        
         if champ_dna.get("block_pair") == f"{sym}_{side}":
             df.at[idx, "label"] = "blocked_by_council"
             continue
@@ -445,6 +449,7 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
         if champ_dna.get("block_regime") == row.get("regime"):
             df.at[idx, "label"] = "blocked_by_regime"
             continue
+        # -----------------------------------------------------------------
         # ------------------------------------------------
         
 
