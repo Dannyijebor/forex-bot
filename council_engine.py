@@ -88,10 +88,19 @@ def create_variants(flaws):
 def overseer_judgment(challengers, df):
     print("\n⚖️ [OVERSEER] Simulating 20 Models against the last 2000 signals...")
     
-    # Simulate all models
+    # Simulate all models (TRUE FORWARD TESTING)
     for ch in challengers:
         pnl = 0
-        for _, row in df.iterrows():
+        # Only look at data after the challenger was born!
+        birth_date = pd.to_datetime(ch["birth"])
+        forward_df = df[df['ts_utc'] > birth_date]
+        
+        # If the challenger is too new, it gets 0 PnL (it hasn't proven anything yet)
+        if len(forward_df) < 10:
+            ch["sim_pnl"] = 0.0
+            continue
+
+        for _, row in forward_df.iterrows():
             # Apply blocks
             if ch["dna"].get("block_pair") == f"{row['symbol']}_{row['side']}": continue
             if ch["dna"].get("block_hour") == row['hour']: continue

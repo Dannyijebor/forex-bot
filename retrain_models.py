@@ -256,5 +256,20 @@ def main():
     print("============================================\n")
     # ---------------------------------------------------
 
+
+    # --- INSTITUTIONAL PATCH: CORRELATION AUTOPSY ---
+    try:
+        print("\n=== 🔬 CORRELATION AUTOPSY (Losing Features) ===")
+        # Calculate correlation of every feature against the actual PnL
+        corr_matrix = train_df.corr()['label_pnl_pips'].sort_values()
+        worst_features = corr_matrix.head(3)
+        for feat, corr in worst_features.items():
+            if feat != 'label_pnl_pips':
+                print(f"  🔻 {feat}: Correlation = {corr:.3f} (High correlation means it CAUSES losses)")
+        print("=================================================\n")
+    except Exception as e:
+        pass
+    # ------------------------------------------------
+
 if __name__ == "__main__":
     main()
