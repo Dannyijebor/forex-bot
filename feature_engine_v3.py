@@ -215,4 +215,16 @@ def build_features_v3(df_jpy, df_eur, df_gbp):
         print("Session inject failed:", e)
     # --------------------------------------------------
 
+
+    # --- WORLD CLASS UPGRADE: MULTI-TIMEFRAME TRENDS ---
+    try:
+        # Calculate 50-period and 200-period EMAs for H1 and H4
+        df['htf_trend_h1'] = (df['Close'].ewm(span=50).mean() > df['Close'].ewm(span=200).mean()).astype(int)
+        df['htf_trend_h4'] = (df['Close'].ewm(span=200).mean() > df['Close'].ewm(span=800).mean()).astype(int)
+        # Trend alignment score (2 = strong buy, -2 = strong sell)
+        df['trend_alignment'] = (df['htf_trend_h1'] * 1) + (df['htf_trend_h4'] * 1)
+    except Exception as e:
+        pass
+    # ---------------------------------------------------
+
     return df

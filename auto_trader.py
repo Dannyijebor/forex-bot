@@ -219,6 +219,18 @@ def open_session():
     return None, None
 
 
+
+# --- WORLD CLASS UPGRADE: MACRO NEWS BLACKOUTS ---
+# Hardcoded high-impact forex news windows (UTC Time)
+# 13:30 UTC = US CPI / NFP, 18:00 UTC = FOMC, 11:00 UTC = ECB
+NEWS_BLACKOUT_HOURS = [13, 18, 11]
+
+def is_news_blackout(now_utc):
+    if now_utc.hour in NEWS_BLACKOUT_HOURS:
+        return True
+    return False
+# ------------------------------------------------
+
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
     closed = []
