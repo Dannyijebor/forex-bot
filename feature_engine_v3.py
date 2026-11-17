@@ -203,4 +203,16 @@ def build_features_v3(df_jpy, df_eur, df_gbp):
     except Exception:
         pass
 
+
+    # --- SENIOR ENGINEER UPGRADE: SESSION AWARENESS ---
+    try:
+        df['hour'] = df.index.hour if isinstance(df.index, pd.DatetimeIndex) else pd.to_datetime(df['time']).dt.hour
+        df['session_asian'] = ((df['hour'] >= 0) & (df['hour'] < 8)).astype(int)
+        df['session_london'] = ((df['hour'] >= 8) & (df['hour'] < 16)).astype(int)
+        df['session_ny'] = ((df['hour'] >= 13) & (df['hour'] < 21)).astype(int)
+        df['session_overlap'] = ((df['hour'] >= 13) & (df['hour'] < 16)).astype(int)
+    except Exception as e:
+        print("Session inject failed:", e)
+    # --------------------------------------------------
+
     return df
