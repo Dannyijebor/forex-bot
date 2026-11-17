@@ -253,7 +253,8 @@ def get_dynamic_sl_tp(df, side):
     return max(15.0, atr_pips * 2.0), max(10.0, atr_pips * 1.0)
 
 def apply_contrarian_logic(symbol, side):
-    if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY":
+    flip_allowed = QUANTUM_DNA.get(f"flip_buy_{symbol.lower()}", 1)
+    if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY" and flip_allowed == 1:
         print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
         return "SELL"
     return side
@@ -273,6 +274,18 @@ def calculate_kelly_lot(base_lot, meta_confidence):
     else:
         return round(base_lot * 2.0, 2) # Double size for A+ setups
 # --------------------------------------------------
+
+
+import json
+import os
+
+# --- QUANTUM THOUGHT PROCESSOR ---
+QUANTUM_DNA = {}
+if os.path.exists("winning_dna.json"):
+    with open("winning_dna.json", "r") as f:
+        QUANTUM_DNA = json.load(f)
+        print(f"  [Quantum] Loaded Evolved DNA: {QUANTUM_DNA}")
+# --------------------------------
 
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
