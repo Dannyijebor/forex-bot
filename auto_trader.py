@@ -261,6 +261,12 @@ def apply_contrarian_logic(symbol, side):
     if champ_dna.get("block_pair") == f"{sym}_{side}":
         df.at[idx, "label"] = "blocked_by_council"
         continue
+    if champ_dna.get("block_hour") == ts.hour:
+        df.at[idx, "label"] = "blocked_by_hour"
+        continue
+    if champ_dna.get("block_regime") == row.get("regime"):
+        df.at[idx, "label"] = "blocked_by_regime"
+        continue
     
     if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY" and flip_allowed == 1:
         print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
