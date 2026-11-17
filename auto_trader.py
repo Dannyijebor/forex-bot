@@ -231,6 +231,34 @@ def is_news_blackout(now_utc):
     return False
 # ------------------------------------------------
 
+
+# --- QUANTUM UPGRADE: CONTRARIAN FLIP & ATR RISK ---
+CONTRARIAN_BUY_PAIRS = ["EURUSD", "GBPUSD"] # The models proven to be anti-predictive
+
+def get_dynamic_sl_tp(df, side):
+    # Calculate 14-period ATR for dynamic risk sizing
+    tr = pd.concat([df['High'] - df['Low'], 
+                    (df['High'] - df['Close'].shift()).abs(), 
+                    (df['Low'] - df['Close'].shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean().iloc[-1]
+    
+    # Scale TP and SL based on current volatility
+    if pd.isna(atr) or atr == 0: return 15.0, 10.0 # fallback
+    
+    # Convert ATR to pips (approx)
+    pip = 0.01 if df['Close'].iloc[-1] > 100 else 0.0001
+    atr_pips = atr / pip
+    
+    # Risk 1.0x ATR, Reward 2.0x ATR (1:2 Risk/Reward)
+    return max(15.0, atr_pips * 2.0), max(10.0, atr_pips * 1.0)
+
+def apply_contrarian_logic(symbol, side):
+    if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY":
+        print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
+        return "SELL"
+    return side
+# ---------------------------------------------------
+
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
     closed = []
@@ -350,8 +378,7 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
 
         entry = float(after["Close"].iloc[0])
         pip = pip_sizes.get(sym, 0.0001)
-        tp_pips = 15.0
-        sl_pips = 10.0
+        tp_pips, sl_pips = get_dynamic_sl_tp(bars, side)
 
         side = None
         if row["buy_ok"] == "Y" and row["sell_ok"] != "Y":
@@ -363,6 +390,8 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
             md = float(row.get("meta_down", 0) or 0)
             side = "BUY" if mu >= md else "SELL"
 
+        if side is not None:
+            side = apply_contrarian_logic(sym, side)
         if side is None:
             df.at[idx, "label"] = "no_signal"
             updated += 1
