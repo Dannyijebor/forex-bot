@@ -257,6 +257,11 @@ def apply_contrarian_logic(symbol, side):
     champ_dna = COUNCIL_STATE["champion"]["dna"]
     flip_allowed = champ_dna.get("flip_buy", 1)
     
+    # Check if the Champion DNA explicitly blocks this setup
+    if champ_dna.get("block_pair") == f"{sym}_{side}":
+        df.at[idx, "label"] = "blocked_by_council"
+        continue
+    
     if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY" and flip_allowed == 1:
         print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
         return "SELL"
