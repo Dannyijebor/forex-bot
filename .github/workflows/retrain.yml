@@ -33,4 +33,4 @@ jobs:
           git add winning_dna.json 2>/dev/null || true
           git add models/ 2>/dev/null || true 2>/dev/null || true
           git diff --staged --quiet || git commit -m "Nightly retrain + adaptive update [skip ci]"
-          git push || echo "Nothing to push"
+          git pull --rebase origin main && git push || echo "Nothing to push"
