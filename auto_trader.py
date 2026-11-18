@@ -250,7 +250,9 @@ def get_dynamic_sl_tp(df, side):
     atr_pips = atr / pip
     
     # Risk 1.0x ATR, Reward 2.0x ATR (1:2 Risk/Reward)
-    return max(15.0, atr_pips * 2.0), max(10.0, atr_pips * 1.0)
+    # SWING MODE: Aim for 3x ATR on TP, 1.5x ATR on SL. 
+    # If ATR is small (quiet market), fallback to a minimum of 40 pips TP / 25 pips SL.
+    return max(40.0, atr_pips * 3.0), max(25.0, atr_pips * 1.5)
 
 def apply_contrarian_logic(symbol, side):
     # COUNCIL CHAMPION LOGIC
@@ -323,6 +325,29 @@ def check_daily_drawdown():
 def check_correlation_risk(sym, current_open_trades=None):
     return 1.0 # Default multiplier
 # ---------------------------------------------------------
+
+
+# --- SWING UPGRADE: TRADE COOLDOWN ---
+TRADE_COOLDOWN_MINUTES = 60
+
+def is_on_cooldown(symbol):
+    try:
+        t = pd.read_csv("trades.csv")
+        if len(t) == 0: return False
+        t['opened_utc'] = pd.to_datetime(t['opened_utc'], utc=True)
+        sym_trades = t[t['symbol'] == symbol].sort_values('opened_utc')
+        if len(sym_trades) == 0: return False
+        
+        last_trade_time = sym_trades.iloc[-1]['opened_utc']
+        now = pd.Timestamp.utcnow()
+        mins_since = (now - last_trade_time).total_seconds() / 60
+        
+        if mins_since < TRADE_COOLDOWN_MINUTES:
+            return True
+        return False
+    except Exception:
+        return False
+# -------------------------------------
 
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
@@ -462,6 +487,12 @@ def label_signals(pairs, lookahead_min=15, pip_sizes=None):
 
         # --- COUNCIL CHAMPION LOGIC (APPLIED AFTER SIDE IS DETERMINED) ---
         side = apply_contrarian_logic(sym, side)
+        
+        # --- SWING UPGRADE: COOLDOWN CHECK ---
+        if is_on_cooldown(sym):
+            print(f"  {sym} is on a 60-minute cooldown. Skipping.")
+            continue
+        # -------------------------------------
         champ_dna = COUNCIL_STATE["champion"]["dna"]
         
         if champ_dna.get("block_pair") == f"{sym}_{side}":
