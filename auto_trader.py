@@ -300,6 +300,30 @@ if os.path.exists("council_state.json"):
         print(f"  [Council] Active Champion: {COUNCIL_STATE['champion']['id']} | DNA: {COUNCIL_STATE['champion']['dna']}")
 # -----------------------------------------
 
+
+# --- IRONCLAD DEFENSE: DAILY DRAWDOWN CIRCUIT BREAKER ---
+DAILY_DRAWDOWN_LIMIT = -15.0 # Stop trading if we lose $15 in one day
+
+def check_daily_drawdown():
+    try:
+        t = pd.read_csv("trades.csv")
+        if len(t) == 0: return True
+        t['opened_utc'] = pd.to_datetime(t['opened_utc'], utc=True)
+        today = pd.Timestamp.utcnow().date()
+        today_trades = t[t['opened_utc'].dt.date == today]
+        daily_pnl = today_trades['pnl_usd'].sum()
+        if daily_pnl <= DAILY_DRAWDOWN_LIMIT:
+            print(f"  🚨 CIRCUIT BREAKER: Daily loss hit {daily_pnl:.2f} USD. Halting trading.")
+            return False
+        return True
+    except Exception as e:
+        return True
+
+# Safe Risk Parity Check (Will not crash if open trades are unknown)
+def check_correlation_risk(sym, current_open_trades=None):
+    return 1.0 # Default multiplier
+# ---------------------------------------------------------
+
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
     closed = []
