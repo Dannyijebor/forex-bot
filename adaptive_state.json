@@ -1,133 +1,133 @@
 {
-  "updated_utc": "2026-11-19T22:25:05.829479+00:00",
-  "n_labeled": 13082,
+  "updated_utc": "2026-11-19T22:29:06.719344+00:00",
+  "n_labeled": 13476,
   "calibration": {
     "EURUSD": [
       {
         "lo": 0.301,
         "hi": 0.817,
-        "n": 778,
-        "win_rate": 0.477,
-        "avg_pips": 3.75
+        "n": 800,
+        "win_rate": 0.441,
+        "avg_pips": 2.03
       },
       {
-        "lo": 0.818,
-        "hi": 0.835,
-        "n": 780,
-        "win_rate": 0.568,
-        "avg_pips": 5.99
+        "lo": 0.817,
+        "hi": 0.834,
+        "n": 806,
+        "win_rate": 0.567,
+        "avg_pips": 5.66
       },
       {
         "lo": 0.835,
-        "hi": 0.851,
-        "n": 773,
-        "win_rate": 0.448,
-        "avg_pips": 3.2
+        "hi": 0.85,
+        "n": 796,
+        "win_rate": 0.445,
+        "avg_pips": 2.95
       },
       {
         "lo": 0.851,
         "hi": 0.872,
-        "n": 778,
-        "win_rate": 0.431,
-        "avg_pips": 2.86
+        "n": 799,
+        "win_rate": 0.426,
+        "avg_pips": 2.64
       },
       {
         "lo": 0.872,
         "hi": 0.992,
-        "n": 776,
-        "win_rate": 0.537,
-        "avg_pips": 7.07
+        "n": 798,
+        "win_rate": 0.53,
+        "avg_pips": 6.59
       }
     ],
     "GBPUSD": [
       {
         "lo": 0.309,
         "hi": 0.75,
-        "n": 869,
-        "win_rate": 0.562,
-        "avg_pips": 3.93
+        "n": 898,
+        "win_rate": 0.572,
+        "avg_pips": 5.23
       },
       {
         "lo": 0.75,
         "hi": 0.773,
-        "n": 867,
-        "win_rate": 0.607,
-        "avg_pips": 5.73
+        "n": 897,
+        "win_rate": 0.606,
+        "avg_pips": 6.52
       },
       {
-        "lo": 0.774,
-        "hi": 0.794,
-        "n": 868,
-        "win_rate": 0.509,
-        "avg_pips": 3.16
+        "lo": 0.773,
+        "hi": 0.793,
+        "n": 898,
+        "win_rate": 0.53,
+        "avg_pips": 5.14
       },
       {
-        "lo": 0.794,
+        "lo": 0.793,
         "hi": 0.812,
-        "n": 868,
-        "win_rate": 0.348,
-        "avg_pips": -0.04
+        "n": 903,
+        "win_rate": 0.358,
+        "avg_pips": 0.44
       },
       {
         "lo": 0.812,
         "hi": 0.983,
-        "n": 865,
-        "win_rate": 0.486,
-        "avg_pips": 5.9
+        "n": 890,
+        "win_rate": 0.493,
+        "avg_pips": 6.63
       }
     ],
     "USDJPY": [
       {
         "lo": 0.354,
         "hi": 0.763,
-        "n": 978,
-        "win_rate": 0.367,
-        "avg_pips": -0.76
+        "n": 1002,
+        "win_rate": 0.376,
+        "avg_pips": -0.48
       },
       {
         "lo": 0.763,
         "hi": 0.78,
-        "n": 973,
-        "win_rate": 0.589,
-        "avg_pips": 5.21
+        "n": 1000,
+        "win_rate": 0.583,
+        "avg_pips": 5.04
       },
       {
         "lo": 0.78,
-        "hi": 0.796,
-        "n": 965,
-        "win_rate": 0.578,
-        "avg_pips": 5.23
+        "hi": 0.797,
+        "n": 995,
+        "win_rate": 0.58,
+        "avg_pips": 5.27
       },
       {
-        "lo": 0.796,
-        "hi": 0.816,
-        "n": 973,
-        "win_rate": 0.562,
-        "avg_pips": 6.67
+        "lo": 0.797,
+        "hi": 0.817,
+        "n": 996,
+        "win_rate": 0.537,
+        "avg_pips": 5.51
       },
       {
-        "lo": 0.816,
+        "lo": 0.817,
         "hi": 0.931,
-        "n": 971,
+        "n": 998,
         "win_rate": 0.393,
-        "avg_pips": -0.8
+        "avg_pips": -0.57
       }
     ]
   },
   "bandit": {
     "EURUSD|normal": {
-      "weight": 1.109,
-      "n": 2920,
-      "win_rate": 0.518,
-      "avg_pips": 5.43,
+      "weight": 1.093,
+      "n": 3029,
+      "win_rate": 0.505,
+      "avg_pips": 4.66,
       "reason": "positive_ev"
     },
     "EURUSD|quiet": {
-      "weight": 1.062,
-      "n": 107,
-      "win_rate": 0.495,
-      "avg_pips": 3.08,
-      "reason": "positive_ev"
+      "weight": 1.0,
+      "n": 112,
+      "win_rate": 0.473,
+      "avg_pips": 1.83,
+      "reason": "neutral"
     },
     "EURUSD|trending": {
       "weight": 1.125,
@@ -144,16 +144,18 @@
       "reason": "neutral"
     },
     "GBPUSD|normal": {
-      "weight": 1.066,
-      "n": 3604,
-      "win_rate": 0.492,
-      "avg_pips": 3.31,
+      "weight": 1.089,
+      "n": 3739,
+      "win_rate": 0.502,
+      "avg_pips": 4.43,
       "reason": "positive_ev"
     },
     "GBPUSD|quiet": {
-      "weight": 1.0,
-      "n": 14,
-      "reason": "explore"
+      "weight": 1.475,
+      "n": 21,
+      "win_rate": 0.619,
+      "avg_pips": 23.74,
+      "reason": "positive_ev"
     },
     "GBPUSD|trending": {
       "weight": 1.135,
@@ -163,24 +165,24 @@
       "reason": "positive_ev"
     },
     "GBPUSD|volatile": {
-      "weight": 1.108,
-      "n": 593,
-      "win_rate": 0.553,
-      "avg_pips": 5.38,
+      "weight": 1.118,
+      "n": 600,
+      "win_rate": 0.558,
+      "avg_pips": 5.92,
       "reason": "positive_ev"
     },
     "USDJPY|normal": {
-      "weight": 1.067,
-      "n": 3812,
-      "win_rate": 0.503,
-      "avg_pips": 3.36,
+      "weight": 1.063,
+      "n": 3942,
+      "win_rate": 0.498,
+      "avg_pips": 3.16,
       "reason": "positive_ev"
     },
     "USDJPY|quiet": {
       "weight": 1.0,
-      "n": 309,
-      "win_rate": 0.388,
-      "avg_pips": -0.71,
+      "n": 310,
+      "win_rate": 0.387,
+      "avg_pips": -0.79,
       "reason": "neutral"
     },
     "USDJPY|trending": {
@@ -200,19 +202,19 @@
   },
   "optimal_thresholds": {
     "EURUSD": {
-      "threshold": 0.74,
-      "ev_pips": 5.42,
-      "n_passing": 3518
+      "threshold": 0.78,
+      "ev_pips": 4.8,
+      "n_passing": 3603
     },
     "GBPUSD": {
-      "threshold": 0.4,
-      "ev_pips": 3.74,
-      "n_passing": 4336
+      "threshold": 0.56,
+      "ev_pips": 4.81,
+      "n_passing": 4400
     },
     "USDJPY": {
       "threshold": 0.76,
-      "ev_pips": 4.07,
-      "n_passing": 3974
+      "ev_pips": 3.86,
+      "n_passing": 4105
     }
   },
   "meta_model_trained": true
