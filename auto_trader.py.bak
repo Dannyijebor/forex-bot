@@ -1,0 +1,784 @@
+"""auto_trader.py — V5.1: live MT5 data + fill-price stops."""
+import os, sys, time
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from signal_engine_v5 import (
+    load_cross_assets, fetch_all_pairs_live, score_all, pick_best,
+)
+import trader_config as cfg
+
+import numpy as np
+import pandas as pd
+from dotenv import load_dotenv
+from tickerall import Tickerall
+
+load_dotenv(os.path.expanduser("~/Forex_model/.env"))
+if not os.getenv("TICKERALL_API_KEY"):
+    load_dotenv(os.path.expanduser("~/forex_model/.env"))
+if not os.getenv("TICKERALL_API_KEY"):
+    load_dotenv(os.path.expanduser("~/forex-bot-clean/.env"))
+
+LOCK = Path(".auto_trader.lock")
+LAST_BAR_FILE = Path(".last_traded_bar")
+
+
+def log(msg):
+    line = "[%s] %s" % (datetime.now(timezone.utc).isoformat(), msg)
+    print(line, flush=True)
+
+
+def notify(title, content):
+    if os.path.exists("/data/data/com.termux/files/usr/bin/termux-notification"):
+        os.system('termux-notification --title "%s" --content "%s" --priority high' % (title, content))
+    else:
+        print("[NOTIFY] %s: %s" % (title, content))
+
+
+def kill_switch_active():
+    return Path(cfg.KILL_FILE).exists()
+
+
+def load_todays_trades():
+    p = Path(cfg.TRADES_CSV)
+    if not p.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(p)
+    if df.empty:
+        return df
+    try:
+        df["opened_utc"] = pd.to_datetime(df["opened_utc"], format="mixed", utc=True)
+        today = datetime.now(timezone.utc).date()
+        return df[df["opened_utc"].dt.date == today]
+    except Exception:
+        return pd.DataFrame()
+
+
+def in_trading_window():
+    h = datetime.now(timezone.utc).hour
+    return cfg.TRADE_HOURS_UTC_START <= h < cfg.TRADE_HOURS_UTC_END
+
+
+def log_trade(row):
+    p = Path(cfg.TRADES_CSV)
+    df = pd.DataFrame([row])
+    df.to_csv(p, mode="a", header=not p.exists(), index=False)
+
+
+def close_position(client, aid, ticket, reason):
+    try:
+        r = client.positions.close(aid, ticket=int(ticket))
+        log("  Closed %s (%s): %s" % (ticket, reason, r.closed))
+        return True
+    except Exception as e:
+        log("  Close %s failed: %s" % (ticket, e))
+        return False
+
+
+def size_by_confidence(prob, base=0.06):
+    if prob >= 0.80:
+        mult = 3.0
+    elif prob >= 0.70:
+        mult = 2.0
+    elif prob >= 0.60:
+        mult = 1.5
+    else:
+        mult = 1.0
+    return max(0.01, min(round(base * mult, 2), 0.60))
+
+
+def compute_tp_sl(price, atr_frac, pip, side,
+                  min_tp=15.0, min_sl=10.0,
+                  max_tp=30.0, max_sl=15.0):
+    atr_price = atr_frac * price
+    atr_pips = atr_price / pip
+    tp_pips = max(min_tp, min(atr_pips * 2.0, max_tp))
+    sl_pips = max(min_sl, min(atr_pips * 1.0, max_sl))
+    if side == "BUY":
+        tp = round(price + tp_pips * pip, 5)
+        sl = round(price - sl_pips * pip, 5)
+    else:
+        tp = round(price - tp_pips * pip, 5)
+        sl = round(price + sl_pips * pip, 5)
+    return tp, sl, tp_pips, sl_pips
+
+
+def compute_loss_streak_penalty(today_trades, now_utc):
+    """Return (penalty, streak, minutes_since_last_loss).
+
+    Consecutive losses beyond MAX_CONSECUTIVE_LOSSES add a threshold penalty
+    that decays over time. A win resets the streak. HARD_BLOCK stops the day.
+    """
+    if today_trades is None or len(today_trades) == 0:
+        return (0.0, 0, None)
+    if "pnl_usd" not in today_trades.columns:
+        return (0.0, 0, None)
+    closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
+    if len(closed) == 0:
+        return (0.0, 0, None)
+    streak = 0
+    for pnl in closed["pnl_usd"].iloc[::-1]:
+        if pnl <= 0:
+            streak += 1
+        else:
+            break
+    if streak < getattr(cfg, "MAX_CONSECUTIVE_LOSSES", 2):
+        return (0.0, streak, None)
+    try:
+        last_loss_time = pd.to_datetime(closed["opened_utc"].iloc[-1], utc=True)
+        minutes_since = (now_utc - last_loss_time).total_seconds() / 60.0
+    except Exception:
+        minutes_since = 0.0
+    base = getattr(cfg, "LOSS_STREAK_PENALTY", 0.08)
+    hold = getattr(cfg, "LOSS_STREAK_HOLD_MIN", 10)
+    halflife = getattr(cfg, "LOSS_STREAK_DECAY_HALFLIFE_MIN", 10)
+    zero = getattr(cfg, "LOSS_STREAK_PENALTY_ZERO", 0.005)
+    if minutes_since < hold:
+        penalty = base
+    else:
+        steps = (minutes_since - hold) / max(halflife, 1)
+        penalty = base * (0.5 ** steps)
+    if penalty < zero:
+        penalty = 0.0
+    return (penalty, streak, minutes_since)
+
+
+def safety_guards_pass(symbol, today_trades):
+    daily_cap = getattr(cfg, "MAX_TRADES_PER_DAY", 100)
+    if len(today_trades) >= daily_cap:
+        log("  Global daily cap (%d/%d)." % (len(today_trades), daily_cap))
+        return False
+
+    # Session-aware scaling of caps
+    sym_mult = 1.0
+    hourly_cap = getattr(cfg, "MAX_TRADES_PER_HOUR", 2)
+    if getattr(cfg, "SESSION_SCALING_ENABLED", False):
+        try:
+            _gname, sym_mult, hourly_cap, _gactive = cfg.session_profile(datetime.now(timezone.utc))
+        except Exception as _ge:
+            log("  session_profile failed: %s" % _ge)
+            sym_mult = 1.0
+
+    if "symbol" in today_trades.columns and len(today_trades) > 0:
+        sym_count = (today_trades["symbol"] == symbol).sum()
+        base_sym_cap = getattr(cfg, "MAX_TRADES_PER_SYMBOL_PER_DAY", 15)
+        sym_cap = max(1, int(round(base_sym_cap * sym_mult)))
+        if sym_count >= sym_cap:
+            log("  Per-symbol cap %s (%d/%d, mult=%.1f)" % (symbol, sym_count, sym_cap, sym_mult))
+            return False
+    if "opened_utc" in today_trades.columns and len(today_trades) > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+        recent = today_trades[today_trades["opened_utc"] >= cutoff]
+        if len(recent) >= hourly_cap:
+            log("  Hourly cap (%d/%d)." % (len(recent), hourly_cap))
+            return False
+
+    hard_streak = getattr(cfg, "LOSS_STREAK_HARD_BLOCK", 4)
+    hard_cooldown = getattr(cfg, "LOSS_STREAK_HARD_BLOCK_COOLDOWN_MIN", 120)
+    if "pnl_usd" in today_trades.columns and len(today_trades) > 0:
+        closed = today_trades.dropna(subset=["pnl_usd"]).sort_values("opened_utc")
+        streak = 0
+        for pnl in closed["pnl_usd"].iloc[::-1]:
+            if pnl <= 0:
+                streak += 1
+            else:
+                break
+        if streak >= hard_streak:
+            # Cooldown, not full-day pause
+            try:
+                last_loss_time = pd.to_datetime(closed["opened_utc"].iloc[-1], utc=True)
+                mins_since = (datetime.now(timezone.utc) - last_loss_time).total_seconds() / 60.0
+            except Exception:
+                mins_since = 0.0
+            if mins_since < hard_cooldown:
+                log("  HARD loss streak %d/%d - %.0f min cooldown remaining." % (
+                    streak, hard_streak, hard_cooldown - mins_since))
+                return False
+            else:
+                log("  HARD loss streak %d/%d expired (%.0f min elapsed) - resuming." % (
+                    streak, hard_streak, mins_since))
+
+    return True
+
+
+def open_session():
+    client = Tickerall(api_key=os.getenv("TICKERALL_API_KEY"))
+    for attempt in range(3):
+        try:
+            session = client.sessions.start(
+                broker="mt5", server=os.getenv("EXNESS_SERVER"),
+                account=int(os.getenv("EXNESS_LOGIN")),
+                password=os.getenv("EXNESS_PASSWORD"),
+                terminal_type="MOBILE",
+            )
+            return client, session
+        except Exception as e:
+            log("  Session %d/3 failed: %s" % (attempt + 1, e))
+            time.sleep(5)
+    return None, None
+
+
+def compute_adaptive_boost(client=None, aid=None):
+    """Read most recent closed trades from Exness (newest-first from API)."""
+    closed = []
+    if client is not None and aid is not None:
+        try:
+            history = client.history.get(aid)
+            # API returns newest-first: history[0] = most recent
+            for h in history[:20]:
+                pnl = ((getattr(h, "profit", 0) or 0)
+                       + (getattr(h, "commission", 0) or 0)
+                       + (getattr(h, "swap", 0) or 0))
+                closed.append(float(pnl))
+        except Exception as e:
+            print("  adaptive history failed: %s" % e)
+            closed = []
+
+    print("  adaptive saw %d trades, newest5=%s" % (len(closed), closed[:5]))
+
+    if len(closed) < 3:
+        return 0.0, 0.0, "warming_up"
+
+    window = getattr(cfg, "ADAPTIVE_WINDOW", 5)
+    recent = closed[:window]   # <-- NEWEST 5 (was closed[-window:])
+    win_rate = sum(1 for p in recent if p > 0) / len(recent)
+
+    step = getattr(cfg, "ADAPTIVE_STEP", 0.02)
+    loosen = getattr(cfg, "ADAPTIVE_LOOSEN_THRESHOLD", 0.60)
+    tighten = getattr(cfg, "ADAPTIVE_TIGHTEN_THRESHOLD", 0.40)
+    max_boost = getattr(cfg, "ADAPTIVE_MAX_PRIMARY", 0.50) - 0.42
+
+    if win_rate >= loosen:
+        boost = min(step * 2, max_boost)
+        state = "loosen"
+    elif win_rate <= tighten:
+        boost = -step
+        state = "tighten"
+    else:
+        boost = 0.0
+        state = "neutral"
+
+    return float(boost), float(win_rate), state
+
+
+def log_signal(signal_dict):
+    """Append one row per symbol per tick to signals_log.csv."""
+    import csv
+    from pathlib import Path as _P
+    path = _P("signals_log.csv")
+    fields = ["ts_utc","symbol","regime","primary_up","primary_down",
+              "meta_up","meta_down","thr_primary","thr_meta_up","thr_meta_down",
+              "boost","penalty","buy_ok","sell_ok","traded","skip_reason",
+              "label","label_pnl_pips"]
+    exists = path.exists()
+    try:
+        with open(path, "a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            if not exists:
+                w.writeheader()
+            w.writerow({k: signal_dict.get(k, "") for k in fields})
+    except Exception as e:
+        log("  log_signal failed: %s" % e)
+
+
+def label_signals(pairs, lookahead_min=15, pip_sizes=None):
+    """For each unlabeled row in signals_log.csv, compute hypothetical outcome."""
+    from pathlib import Path as _P
+
+    if pip_sizes is None:
+        pip_sizes = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
+
+    path = _P("signals_log.csv")
+    if not path.exists():
+        return
+
+    df = pd.read_csv(path)
+    if "traded" not in df.columns:
+        return
+    if "label" not in df.columns:
+        df["label"] = ""
+    if "label_pnl_pips" not in df.columns:
+        df["label_pnl_pips"] = ""
+
+    candidates = df[(df["buy_ok"] == "Y") | (df["sell_ok"] == "Y")].copy()
+    candidates = candidates[candidates["label"] == ""]
+
+    if len(candidates) == 0:
+        return
+
+    updated = 0
+    now = datetime.now(timezone.utc)
+
+    for idx, row in candidates.iterrows():
+        sym = row["symbol"]
+        try:
+            ts = pd.to_datetime(row["ts_utc"], utc=True)
+        except Exception:
+            continue
+        if (now - ts).total_seconds() / 60 < lookahead_min:
+            continue
+
+        bars = pairs.get(sym)
+        if bars is None or len(bars) < 5:
+            continue
+
+        after = bars[bars.index >= ts]
+        if len(after) < 2:
+            continue
+
+        entry = float(after["Close"].iloc[0])
+        pip = pip_sizes.get(sym, 0.0001)
+        tp_pips = 15.0
+        sl_pips = 10.0
+
+        side = None
+        if row["buy_ok"] == "Y" and row["sell_ok"] != "Y":
+            side = "BUY"
+        elif row["sell_ok"] == "Y" and row["buy_ok"] != "Y":
+            side = "SELL"
+        elif row["buy_ok"] == "Y" and row["sell_ok"] == "Y":
+            mu = float(row.get("meta_up", 0) or 0)
+            md = float(row.get("meta_down", 0) or 0)
+            side = "BUY" if mu >= md else "SELL"
+
+        if side is None:
+            df.at[idx, "label"] = "no_signal"
+            updated += 1
+            continue
+
+        window = after.iloc[1:4]
+        tp_price = entry + tp_pips * pip if side == "BUY" else entry - tp_pips * pip
+        sl_price = entry - sl_pips * pip if side == "BUY" else entry + sl_pips * pip
+
+        label = "flat"
+        pnl_pips = 0.0
+        for _, bar in window.iterrows():
+            hi = float(bar["High"])
+            lo = float(bar["Low"])
+            if side == "BUY":
+                if hi >= tp_price:
+                    label, pnl_pips = "win", tp_pips
+                    break
+                if lo <= sl_price:
+                    label, pnl_pips = "loss", -sl_pips
+                    break
+            else:
+                if lo <= tp_price:
+                    label, pnl_pips = "win", tp_pips
+                    break
+                if hi >= sl_price:
+                    label, pnl_pips = "loss", -sl_pips
+                    break
+        else:
+            last_close = float(window["Close"].iloc[-1])
+            move = (last_close - entry) if side == "BUY" else (entry - last_close)
+            pnl_pips = move / pip
+
+        df.at[idx, "label"] = label
+        df.at[idx, "label_pnl_pips"] = "%.2f" % pnl_pips
+        updated += 1
+
+    # Always write back so new label columns exist even before any labels are set
+    df.to_csv(path, index=False)
+    if updated:
+        log("  Labelled %d signal(s)" % updated)
+
+
+def check_model_invalidation(client, aid, open_positions, results):
+    """Close losing positions when the model's meta score for their direction
+    drops well below the threshold that triggered entry."""
+    if not getattr(cfg, "MODEL_AWARE_EXIT_ENABLED", False):
+        return
+    if not open_positions or not results:
+        return
+
+    min_age = getattr(cfg, "MODEL_AWARE_EXIT_MIN_AGE_MIN", 2)
+    max_loss = getattr(cfg, "MODEL_AWARE_EXIT_MAX_LOSS_USD", 8.0)
+    buffer   = getattr(cfg, "MODEL_AWARE_EXIT_META_BUFFER", 0.05)
+
+    for p in open_positions:
+        profit = getattr(p, "profit", 0) or 0
+        if profit >= 0:
+            continue  # only manage losers
+        if abs(profit) > max_loss:
+            continue  # too late, let SL handle it
+
+        ot = getattr(p, "open_time", None)
+        if not ot:
+            continue
+        try:
+            otd = datetime.fromisoformat(ot.replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - otd).total_seconds() / 60.0
+        except Exception:
+            continue
+        if age_min < min_age:
+            continue
+
+        sym = (p.symbol or "").replace("m", "").replace("M", "")
+        r = next((x for x in results if x.get("symbol") == sym), None)
+        if r is None:
+            continue
+
+        side = (p.side or "").upper()
+        if side == "BUY":
+            meta = r.get("meta_up", 0.0)
+            thr  = r.get("thr_up", 0.0)
+        elif side == "SELL":
+            meta = r.get("meta_down", 0.0)
+            thr  = r.get("thr_down", 0.0)
+        else:
+            continue
+
+        if meta < (thr - buffer):
+            log("  MODEL FLIP: %s %s %s age=%.1fmin pnl=$%.2f meta=%.3f < thr-buf=%.3f" % (
+                p.ticket, sym, side, age_min, profit, meta, thr - buffer))
+            close_position(client, aid, p.ticket, "model_flip")
+
+
+def manage_positions(client, aid, open_positions, results=None):
+    if not open_positions:
+        return
+
+    # --- Check 0: Model-aware early exit for losing trades ---
+    check_model_invalidation(client, aid, open_positions, results)
+
+    # --- Check 1: Collective profit guard (raised, requires 2+ positions) ---
+    collective_tp = getattr(cfg, "COLLECTIVE_TP_USD", 50.0)
+    profitable = [p for p in open_positions if (getattr(p, "profit", 0) or 0) > 0]
+    total_profit = sum((getattr(p, "profit", 0) or 0) for p in open_positions)
+    if total_profit >= collective_tp and len(profitable) >= 2:
+        log("  COLLECTIVE TP: total $%.2f >= $%.2f across %d positions" % (
+            total_profit, collective_tp, len(profitable)))
+        closed = 0
+        for p in profitable:
+            if close_position(client, aid, p.ticket, "collective_tp"):
+                closed += 1
+        log("  Closed %d profitable positions" % closed)
+        return
+
+    # --- Check 2: Size-aware individual profit-take ---
+    min_hold = getattr(cfg, "PROFIT_HOLD_MINUTES", 5)
+    per_vol = getattr(cfg, "PROFIT_TAKE_PER_VOLUME", 80.0)
+    for p in open_positions:
+        ot = getattr(p, "open_time", None)
+        if not ot:
+            continue
+        try:
+            otd = datetime.fromisoformat(ot.replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - otd).total_seconds() / 60
+            profit = getattr(p, "profit", 0) or 0
+            volume = float(getattr(p, "volume", 0.1) or 0.1)
+            profit_target = max(5.0, volume * per_vol)
+            if age_min >= min_hold and profit >= profit_target:
+                log("  PROFIT TAKE: %s age=%.1fmin vol=%.2f pnl=$%.2f >= $%.2f" % (
+                    p.ticket, age_min, volume, profit, profit_target))
+                close_position(client, aid, p.ticket, "time_profit")
+        except Exception as e:
+            log("  Hold check: %s" % e)
+
+
+def safe_account_snapshot(client, aid):
+    """Return account object or None. Never raises."""
+    try:
+        a = client.accounts.get(aid)
+        if a is None:
+            return None
+        if getattr(a, "account", None) is None:
+            return None
+        return a
+    except Exception as e:
+        log("  account fetch failed: %s" % e)
+        return None
+
+
+def reconcile_closed_trades(client, aid):
+    """Fill pnl_usd in trades.csv for tickets that have closed on Exness."""
+    p = Path("trades.csv")
+    if not p.exists():
+        return
+    try:
+        df = pd.read_csv(p)
+    except Exception as e:
+        log("  reconcile: read failed: %s" % e)
+        return
+    if "ticket" not in df.columns or "pnl_usd" not in df.columns:
+        return
+
+    acct = client.accounts.get(aid)
+    open_tickets = {str(x.ticket) for x in (acct.positions or [])}
+
+    mask = df["pnl_usd"].isna() & ~df["ticket"].astype(str).isin(open_tickets)
+    if not mask.any():
+        return
+
+    history = client.history.get(aid) or []
+    pnl_by_ticket = {}
+    for h in history:
+        t = str(getattr(h, "ticket", "") or "")
+        if not t or not getattr(h, "complete", True):
+            continue
+        pnl = float(
+            (getattr(h, "profit", 0) or 0)
+            + (getattr(h, "commission", 0) or 0)
+            + (getattr(h, "swap", 0) or 0)
+        )
+        pnl_by_ticket[t] = pnl_by_ticket.get(t, 0.0) + pnl
+
+    updated = 0
+    for idx in df.index[mask]:
+        t = str(df.at[idx, "ticket"])
+        if t in pnl_by_ticket:
+            df.at[idx, "pnl_usd"] = pnl_by_ticket[t]
+            updated += 1
+
+    if updated:
+        df.to_csv(p, index=False)
+        log("  Reconciled %d closed trade(s) into trades.csv" % updated)
+
+
+def main():
+    if LOCK.exists():
+        age = time.time() - LOCK.stat().st_mtime
+        if age < 240:
+            log("Locked (%.0fs)." % age)
+            return
+    LOCK.touch()
+
+    client = None
+    aid = None
+
+    try:
+        if kill_switch_active():
+            log("KILL switch active.")
+            return
+
+        # 0. Session-aware gate (skip weekends, log current session)
+        if getattr(cfg, "SESSION_SCALING_ENABLED", False):
+            _sname, _smult, _shcap, _sactive = cfg.session_profile(datetime.now(timezone.utc))
+            log("  Session: %s (sym_mult=%.1f, hourly=%d, active=%s)" % (_sname, _smult, _shcap, _sactive))
+            if not _sactive:
+                log("  Not trading (%s). Exiting." % _sname)
+                return
+
+        # 1. Open broker session FIRST
+        client, session = open_session()
+        if client is None or session is None:
+            log("All sessions failed.")
+            return
+        if not session.is_demo:
+            log("LIVE ACCOUNT - refusing.")
+            client.sessions.end(session.account_id)
+            return
+        aid = session.account_id
+
+        # 1b. Reconcile closed trades into trades.csv before anything else
+        try:
+            reconcile_closed_trades(client, aid)
+        except Exception as e:
+            log("  reconcile failed: %s" % e)
+
+        # 2. Fetch live bars from MT5
+        log("Fetching live MT5 bars...")
+        cross_daily = load_cross_assets()
+        pairs = fetch_all_pairs_live(client, aid, count=1500)
+        if any(p is None for p in pairs.values()):
+            log("  Live data fetch failed for at least one pair.")
+            return
+        for sym, df in pairs.items():
+            if df is not None:
+                log("    %s: %d bars, last=%s" % (sym, len(df), df.index[-1]))
+
+        # 2a. Cache bars for future retraining
+        try:
+            from bars_cache import cache_bars
+            cache_bars(pairs)
+        except Exception as e:
+            log("  cache_bars failed: %s" % e)
+
+        # 2b. Label pending signals using fetched bars
+        try:
+            label_signals(pairs)
+        except Exception as e:
+            log("  label_signals failed: %s" % e)
+
+        # 3. Score all symbols
+        threshold_boost, win_rate, adaptive_state = compute_adaptive_boost(client, aid)
+        log("  ADAPTIVE: state=%s win_rate=%.2f boost=%+.3f" % (adaptive_state, win_rate, threshold_boost))
+        _streak_trades = load_todays_trades()
+        _penalty, _streak, _mins_since = compute_loss_streak_penalty(
+            _streak_trades, datetime.now(timezone.utc))
+        if _streak >= 1:
+            _mins_str = ("%.0f" % _mins_since) if _mins_since is not None else "n/a"
+            log("  Loss streak=%d, penalty=+%.3f (last loss %s min ago)" % (
+                _streak, _penalty, _mins_str))
+        results = score_all(pairs, cross_daily, boost=threshold_boost, penalty=_penalty)
+        if not results:
+            log("  No scoring results.")
+            return
+
+        for r in results:
+            buy_m = "Y" if r["buy_qualifies"] else "n"
+            sell_m = "Y" if r["sell_qualifies"] else "n"
+            regime = r.get("regime", "?")
+            log("  %s [%s]: UP p=%.3f m=%.3f/%.2f %s | DOWN p=%.3f m=%.3f/%.2f %s" % (
+                r["symbol"], regime,
+                r["primary_up"], r["meta_up"], r["thr_up"], buy_m,
+                r["primary_down"], r["meta_down"], r["thr_down"], sell_m,
+            ))
+
+        # NEW: persist every signal to signals_log.csv (for offline training)
+        _sig_ts = datetime.now(timezone.utc).isoformat()
+        for r in results:
+            log_signal({
+                "ts_utc": _sig_ts,
+                "symbol": r.get("symbol", ""),
+                "regime": r.get("regime", ""),
+                "primary_up": "%.4f" % r.get("primary_up", 0.0),
+                "primary_down": "%.4f" % r.get("primary_down", 0.0),
+                "meta_up": "%.4f" % r.get("meta_up", 0.0),
+                "meta_down": "%.4f" % r.get("meta_down", 0.0),
+                "thr_primary": "",
+                "thr_meta_up": "%.4f" % r.get("thr_up", 0.0),
+                "thr_meta_down": "%.4f" % r.get("thr_down", 0.0),
+                "boost": "%.4f" % threshold_boost,
+                "penalty": "%.4f" % _penalty,
+                "buy_ok": "Y" if r.get("buy_qualifies") else "N",
+                "sell_ok": "Y" if r.get("sell_qualifies") else "N",
+                "traded": "",
+                "skip_reason": "",
+            })
+
+        # 4. Account state + position management (ALWAYS runs)
+        acct = safe_account_snapshot(client, aid)
+        if acct is None:
+            log("  Session died before account fetch — skipping cycle (will retry).")
+            return
+        equity = acct.account.equity
+        open_positions = acct.positions or []
+        log("  Equity $%.2f  Positions %d" % (equity, len(open_positions)))
+
+        manage_positions(client, aid, open_positions, results)
+
+        # Refresh state after possible closes
+        acct = safe_account_snapshot(client, aid)
+        if acct is None:
+            log("  Session died after position mgmt — skipping signal.")
+            return
+        open_positions = acct.positions or []
+        equity = acct.account.equity
+
+        # 5. Pick best signal
+        best = pick_best(results)
+        if best is None:
+            log("  No signal. Skipping.")
+            return
+
+        symbol, side, prob, r = best
+        price = r["close"]
+        bar_ts = r["timestamp"]
+        atr_frac = r["atr"]
+        tickerall_symbol = r["tickerall_symbol"]
+        pip = r["pip_size"]
+
+        log("  Best: %s %s @ meta=%.4f" % (symbol, side, prob))
+
+        # 6. Guards
+        today_trades = load_todays_trades()
+        if not safety_guards_pass(symbol, today_trades):
+            return
+
+        # 7. Re-check limits
+        if not in_trading_window():
+            log("  Outside window.")
+            return
+        if len(open_positions) >= cfg.MAX_POSITIONS:
+            log("  Max positions.")
+            return
+
+        bar_key = str(bar_ts)
+        if LAST_BAR_FILE.exists() and LAST_BAR_FILE.read_text().strip() == bar_key:
+            log("  Already traded bar.")
+            return
+
+        # 8. Size and place
+        volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
+        max_risk_usd = equity * 0.02
+        max_lots_by_risk = max_risk_usd / (10.0 * 10.0)
+        volume = round(min(volume, max_lots_by_risk), 2)
+        volume = max(volume, cfg.LOT_MIN)
+
+        log("  SIGNAL %s %s (Dukascopy close=%.5f) meta=%.3f" % (symbol, side, price, prob))
+
+        try:
+            result = client.orders.place(
+                aid, type="market", symbol=tickerall_symbol, side=side,
+                volume=volume,
+                comment="%s-%s-m%.2f" % (symbol, side[0], prob),
+                timeout=90.0,
+            )
+        except Exception as oe:
+            log("  Order failed: %s: %s" % (type(oe).__name__, oe))
+            return
+
+        fill_price = float(result.price)
+        tp, sl, tp_pips, sl_pips = compute_tp_sl(
+            fill_price, atr_frac, pip, side,
+            min_tp=getattr(cfg, "MIN_TP_PIPS", 15.0),
+            min_sl=getattr(cfg, "MIN_SL_PIPS", 10.0),
+            max_tp=getattr(cfg, "MAX_TP_PIPS", 30.0),
+            max_sl=getattr(cfg, "MAX_SL_PIPS", 15.0),
+        )
+        log("      Fill=%.5f  Vol=%.2f  TP=%.5f  SL=%.5f" % (fill_price, volume, tp, sl))
+
+        try:
+            client.positions.modify(
+                aid, int(result.ticket),
+                stop_loss=sl, take_profit=tp,
+                timeout=90.0,
+            )
+            log("      Stops attached OK")
+        except Exception as me:
+            log("      Stop attach failed: %s: %s" % (type(me).__name__, me))
+            try:
+                client.positions.close(aid, ticket=int(result.ticket))
+                log("      Closed naked position")
+            except Exception:
+                pass
+            return
+
+        LAST_BAR_FILE.write_text(bar_key)
+        log("  Placed: ticket=%s status=%s" % (result.ticket, result.status))
+
+        log_trade({
+            "opened_utc": datetime.now(timezone.utc).isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "bar_utc": bar_ts.isoformat() if hasattr(bar_ts, "isoformat") else str(bar_ts),
+            "primary_up": round(r["primary_up"], 4),
+            "primary_down": round(r["primary_down"], 4),
+            "meta_up": round(r["meta_up"], 4),
+            "meta_down": round(r["meta_down"], 4),
+            "ticket": result.ticket,
+            "entry_price": result.price,
+            "tp": tp,
+            "sl": sl,
+            "volume": volume,
+            "equity_before": equity,
+        })
+        notify("Trade Placed", "%s %s #%s" % (symbol, side, result.ticket))
+
+    except Exception as e:
+        log("  Cycle error: %s: %s" % (type(e).__name__, e))
+    finally:
+        if client is not None and aid is not None:
+            try:
+                client.sessions.end(aid)
+            except Exception:
+                pass
+        if LOCK.exists():
+            LOCK.unlink()
+
+
+if __name__ == "__main__":
+    main()

@@ -5,7 +5,6 @@ import json
 import lightgbm as lgb
 from datetime import datetime, timezone
 import signal_engine_v5
-from feature_engine_v3 import generate_features # Adjust if your feature function is named differently
 
 print("=== INITIATING AUTONOMOUS MODEL GENERATOR ===")
 
@@ -23,8 +22,10 @@ target_pairs = list(signal_engine_v5.TICKERALL_SYMBOLS.keys())
 missing_models = []
 
 for sym in target_pairs:
-    model_path = f"models/{sym.lower()}/model_trees.json"
-    if not os.path.exists(model_path):
+    # Check if ANY model file exists for this symbol (json, pkl, txt)
+    import glob
+    model_files = glob.glob(f"models/{sym.lower()}*/*") + glob.glob(f"models/{sym.lower()}_*/*")
+    if not model_files:
         missing_models.append(sym)
 
 if not missing_models:
@@ -49,8 +50,10 @@ for sym in missing_models:
     # Prepare features and labels
     # Assuming your df has feature columns like 'primary_up', 'meta_up', 'session_london', etc.
     # We drop the target columns to get the features
+    # Drop text columns and keep ONLY numeric features
     drop_cols = ['label', 'label_pnl_pips', 'ts_utc', 'symbol', 'side', 'entry_price', 'ticket']
     X = sym_df.drop(columns=[c for c in drop_cols if c in sym_df.columns], errors='ignore')
+    X = X.select_dtypes(include=['number']).fillna(0) # Keep only numbers and fill NaNs
     
     # We create a binary label: 1 if win, 0 if loss
     y = (sym_df['label'] == 'win').astype(int)

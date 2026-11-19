@@ -1,0 +1,150 @@
+--- PYTHON ---
+Python 3.14.10
+
+--- PIP LIST ---
+Package            Version
+------------------ ----------
+anyio              4.16.0
+certifi            2026.10.23
+charset-normalizer 3.5.2
+h11                0.16.0
+httpcore           1.0.9
+httpx              0.28.1
+idna               3.20
+lightgbm           4.7.0
+narwhals           2.28.0
+numpy              2.5.4
+pandas             3.1.1
+pip                26.3
+python-dateutil    4.0.0
+python-dotenv      1.2.4
+PyYAML             6.0.3
+requests           2.34.2
+scipy              1.18.1
+setuptools         84.2.1
+tickerall          0.14.0
+typing_extensions  4.16.0
+tzdata             2026.6
+urllib3            2.8.0
+websocket-client   1.9.2
+
+--- FILES ---
+total 13677
+drwx------.  7 u0_a273 u0_a273    4096 Nov 19 02:15 .
+drwx------. 18 u0_a273 u0_a273    3452 Nov 19 02:06 ..
+drwx------.  7 u0_a273 u0_a273    3452 Nov 19 02:06 .git
+drwx------.  3 u0_a273 u0_a273    3452 Nov 16 11:33 .github
+-rw-------.  1 u0_a273 u0_a273     256 Nov 16 11:33 .gitignore
+drwx------.  2 u0_a273 u0_a273    3452 Nov 19 02:07 __pycache__
+-rw-------.  1 u0_a273 u0_a273    6991 Nov 16 13:27 adaptive_engine.py
+-rw-------.  1 u0_a273 u0_a273    4136 Nov 19 02:06 adaptive_state.json
+-rwx------.  1 u0_a273 u0_a273   35549 Nov 19 01:50 auto_trader.py
+-rwx------.  1 u0_a273 u0_a273   27993 Nov 16 12:04 auto_trader.py.bak
+-rw-------.  1 u0_a273 u0_a273    3754 Nov 19 02:08 auto_trainer.py
+-rw-------.  1 u0_a273 u0_a273    2608 Nov 16 11:33 bars_cache.py
+-rw-------.  1 u0_a273 u0_a273     161 Nov 19 02:06 bars_cache_AUDUSD.csv
+-rw-------.  1 u0_a273 u0_a273     159 Nov 19 02:06 bars_cache_EURGBP.csv
+-rw-------.  1 u0_a273 u0_a273     161 Nov 19 02:06 bars_cache_EURJPY.csv
+-rw-------.  1 u0_a273 u0_a273  442659 Nov 19 02:06 bars_cache_EURUSD.csv
+-rw-------.  1 u0_a273 u0_a273     161 Nov 19 02:06 bars_cache_GBPJPY.csv
+-rw-------.  1 u0_a273 u0_a273  443485 Nov 19 02:06 bars_cache_GBPUSD.csv
+-rw-------.  1 u0_a273 u0_a273     161 Nov 19 02:06 bars_cache_NZDUSD.csv
+-rw-------.  1 u0_a273 u0_a273     161 Nov 19 02:06 bars_cache_USDCAD.csv
+-rw-------.  1 u0_a273 u0_a273  443225 Nov 19 02:06 bars_cache_USDJPY.csv
+-rw-------.  1 u0_a273 u0_a273     142 Nov 17 08:00 bot_output.log
+-rw-------.  1 u0_a273 u0_a273    7879 Nov 17 09:05 council_engine.py
+-rw-------.  1 u0_a273 u0_a273    5441 Nov 18 21:56 council_state.json
+-rwx------.  1 u0_a273 u0_a273 1022611 Nov 18 21:52 cross_assets_daily.csv
+drwx------.  2 u0_a273 u0_a273    3452 Nov 16 11:33 dashboard
+-rw-------.  1 u0_a273 u0_a273    3215 Nov 16 11:33 diagnose.py
+-rw-------.  1 u0_a273 u0_a273     708 Nov 19 02:15 diagnostic.txt
+-rw-------.  1 u0_a273 u0_a273    5005 Nov 16 11:33 feature_engine_v2.py
+-rw-------.  1 u0_a273 u0_a273    8798 Nov 17 08:19 feature_engine_v3.py
+-rw-------.  1 u0_a273 u0_a273    1172 Nov 19 01:50 final_multi_pair.py
+-rw-------.  1 u0_a273 u0_a273     237 Nov 16 12:12 first_cycle_after_fix.log
+-rw-------.  1 u0_a273 u0_a273     977 Nov 17 09:05 fix_council.py
+-rw-------.  1 u0_a273 u0_a273    1692 Nov 17 09:05 fix_kelly.py
+-rw-------.  1 u0_a273 u0_a273     572 Nov 19 01:50 fix_pairs_and_h1.py
+-rw-------.  1 u0_a273 u0_a273    1858 Nov 17 09:06 fix_retrain.py
+-rw-------.  1 u0_a273 u0_a273     410 Nov 18 15:40 fix_retrain_push.py
+-rw-------.  1 u0_a273 u0_a273     570 Nov 18 15:34 fix_retrain_yml.py
+-rw-------.  1 u0_a273 u0_a273    1710 Nov 17 20:03 fix_side_order.py
+-rw-------.  1 u0_a273 u0_a273    2788 Nov 17 09:49 fix_syntax.py
+-rw-------.  1 u0_a273 u0_a273    1791 Nov 18 15:58 ironclad_defense.py
+-rw-------.  1 u0_a273 u0_a273    2579 Nov 17 08:19 make_it_genius.py
+drwx------. 10 u0_a273 u0_a273    3452 Nov 16 11:33 models
+-rw-------.  1 u0_a273 u0_a273    1962 Nov 19 01:46 multi_pair_patch.py
+-rw-------.  1 u0_a273 u0_a273    2560 Nov 17 08:31 quantum_dna.py
+-rw-------.  1 u0_a273 u0_a273    3794 Nov 17 08:24 quantum_upgrade.py
+-rw-------.  1 u0_a273 u0_a273     121 Nov 16 11:33 requirements.txt
+-rw-------.  1 u0_a273 u0_a273    1436 Nov 17 07:47 retrain_log.json
+-rw-------.  1 u0_a273 u0_a273    9915 Nov 17 09:06 retrain_models.py
+-rw-------.  1 u0_a273 u0_a273    3890 Nov 16 11:33 signal_engine.py
+-rw-------.  1 u0_a273 u0_a273    3495 Nov 16 11:33 signal_engine_v2.py
+-rw-------.  1 u0_a273 u0_a273    6726 Nov 16 11:33 signal_engine_v3.py
+-rw-------.  1 u0_a273 u0_a273    7891 Nov 16 11:33 signal_engine_v4.py
+-rw-------.  1 u0_a273 u0_a273   16537 Nov 19 01:50 signal_engine_v5.py
+-rw-------.  1 u0_a273 u0_a273     593 Nov 17 07:47 signal_meta_model.json
+-rw-------.  1 u0_a273 u0_a273 5562490 Nov 19 02:06 signals_log.csv
+-rw-------.  1 u0_a273 u0_a273 5542079 Nov 16 12:04 signals_log.csv.bak
+-rw-------.  1 u0_a273 u0_a273    2253 Nov 18 22:03 swing_patch.py
+-rw-------.  1 u0_a273 u0_a273    4582 Nov 16 11:33 trader_config.py
+-rw-------.  1 u0_a273 u0_a273  172197 Nov 19 01:58 trades.csv
+-rw-------.  1 u0_a273 u0_a273    3019 Nov 17 08:27 ultimate_sentience.py
+-rw-------.  1 u0_a273 u0_a273     753 Nov 19 02:06 update_workflow.py
+./.git/description
+./.git/config
+./.git/HEAD
+./.git/COMMIT_EDITMSG
+./.git/packed-refs
+./.git/index
+./.git/FETCH_HEAD
+./.git/ORIG_HEAD
+./.git/AUTO_MERGE
+./.gitignore
+./adaptive_engine.py
+./adaptive_state.json
+./auto_trader.py
+./bars_cache.py
+./bars_cache_EURUSD.csv
+./bars_cache_GBPUSD.csv
+./bars_cache_USDJPY.csv
+./cross_assets_daily.csv
+./dashboard/app.py
+./dashboard/requirements.txt
+./diagnose.py
+./feature_engine_v2.py
+./feature_engine_v3.py
+./models/features_m5.json
+./models/model_trees.json
+./models/scaler_mean.npy
+./models/scaler_scale.npy
+./requirements.txt
+./retrain_models.py
+./signal_engine.py
+./signal_engine_v2.py
+./signal_engine_v3.py
+./signal_engine_v4.py
+./signal_engine_v5.py
+./signals_log.csv
+./trader_config.py
+./trades.csv
+./auto_trader.py.bak
+./signals_log.csv.bak
+./first_cycle_after_fix.log
+./__pycache__/signal_engine_v5.cpython-314.pyc
+./__pycache__/feature_engine_v2.cpython-314.pyc
+./__pycache__/feature_engine_v3.cpython-314.pyc
+./__pycache__/trader_config.cpython-314.pyc
+./retrain_log.json
+./signal_meta_model.json
+./bot_output.log
+./make_it_genius.py
+./quantum_upgrade.py
+./ultimate_sentience.py
+
+--- DATA ERRORS ---
+./auto_trainer.py:47:        print(f"  ⚠️ NOT ENOUGH DATA for {sym} (only {len(sym_df)} trades). It needs to run live for a few more days to collect data.")
+
+--- IMPORTS ---
+./dashboard/app.py:11:import requests
