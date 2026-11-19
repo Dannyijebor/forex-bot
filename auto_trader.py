@@ -491,12 +491,6 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
 
         # --- COUNCIL CHAMPION LOGIC (APPLIED AFTER SIDE IS DETERMINED) ---
         side = apply_contrarian_logic(sym, side)
-        
-        # --- SWING UPGRADE: COOLDOWN CHECK ---
-        if is_on_cooldown(sym):
-            print(f"  {sym} is on a 60-minute cooldown. Skipping.")
-            continue
-        # -------------------------------------
         champ_dna = COUNCIL_STATE["champion"]["dna"]
         
         if champ_dna.get("block_pair") == f"{sym}_{side}":
