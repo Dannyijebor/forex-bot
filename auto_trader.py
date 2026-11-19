@@ -904,6 +904,14 @@ def main():
 
         log("  SIGNAL %s %s (Dukascopy close=%.5f) meta=%.3f" % (symbol, side, price, prob))
 
+        # --- EXECUTION PATCH: LIVE CONTRARIAN FLIP & COOLDOWN ---
+        side = apply_contrarian_logic(symbol, side)
+        if is_on_cooldown(symbol):
+            log("  %s is on a 60-minute cooldown. Skipping live trade." % symbol)
+            return
+        # ---------------------------------------------------------
+
+
         try:
             result = client.orders.place(
                 aid, type="market", symbol=tickerall_symbol, side=side,
