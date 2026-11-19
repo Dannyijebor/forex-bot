@@ -31,7 +31,11 @@ META_THRESHOLDS = {
     "USDJPY": {"up": 0.40, "down": 0.45},
 }
 
-TICKERALL_SYMBOLS = {"EURUSD": "EURUSDm", "GBPUSD": "GBPUSDm", "USDJPY": "USDJPYm"}
+TICKERALL_SYMBOLS = {
+    "EURUSD": "EURUSDm", "GBPUSD": "GBPUSDm", "USDJPY": "USDJPYm",
+    "AUDUSD": "AUDUSDm", "USDCAD": "USDCADm", "NZDUSD": "NZDUSDm",
+    "EURGBP": "EURGBPm", "EURJPY": "EURJPYm", "GBPJPY": "GBPJPYm"
+}
 
 
 def add_order_flow_features(df):
@@ -139,7 +143,7 @@ def fetch_pair_biquote(symbol, count=1500, include_forming=True):
     try:
         from biquote import Biquote
         bq = Biquote()
-        raw = pd.DataFrame(bq.ohlc(symbol, interval="5m", limit=count))
+        raw = pd.DataFrame(bq.ohlc(symbol, interval="1h", limit=count))
         if raw is None or len(raw) == 0:
             return None
 
@@ -167,7 +171,7 @@ def fetch_all_pairs_biquote(count=1500, include_forming=True):
     """Fetch all 3 pairs from Biquote. One API call per symbol."""
     return {
         sym: fetch_pair_biquote(sym, count=count, include_forming=include_forming)
-        for sym in ["USDJPY", "EURUSD", "GBPUSD"]
+        for sym in TICKERALL_SYMBOLS.keys()
     }
 
 
@@ -178,7 +182,7 @@ def fetch_pair_live(client, account_id, symbol, count=1500, _retry=True):
             account_id,
             symbol=TICKERALL_SYMBOLS[symbol],
             count=count,
-            timeframe="M5",
+            timeframe="H1",
         )
         if not candles:
             return None
@@ -213,12 +217,12 @@ def fetch_all_pairs_live(client, account_id, count=1500):
     """Fetch all 3 pairs from live MT5 broker."""
     return {
         sym: fetch_pair_live(client, account_id, sym, count)
-        for sym in ["USDJPY", "EURUSD", "GBPUSD"]
+        for sym in TICKERALL_SYMBOLS.keys()
     }
 
 
 def fetch_all_pairs(days=7):
-    return {sym: fetch_pair(sym, days) for sym in ["USDJPY", "EURUSD", "GBPUSD"]}
+    return {sym: fetch_pair(sym, days) for sym in TICKERALL_SYMBOLS.keys()}
 
 
 def current_regime(df):

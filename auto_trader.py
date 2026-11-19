@@ -412,12 +412,16 @@ def log_signal(signal_dict):
         log("  log_signal failed: %s" % e)
 
 
-def label_signals(pairs, lookahead_min=15, pip_sizes=None):
+def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
     """For each unlabeled row in signals_log.csv, compute hypothetical outcome."""
     from pathlib import Path as _P
 
     if pip_sizes is None:
-        pip_sizes = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01}
+        pip_sizes = {
+    "EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01, 
+    "AUDUSD": 0.0001, "USDCAD": 0.0001, "NZDUSD": 0.0001, 
+    "EURGBP": 0.0001, "EURJPY": 0.01, "GBPJPY": 0.01
+}
 
     path = _P("signals_log.csv")
     if not path.exists():
