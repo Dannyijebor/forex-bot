@@ -412,40 +412,36 @@ def log_signal(signal_dict):
         log("  log_signal failed: %s" % e)
 
 
-def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
+def label_signals(pairs, lookahead_min=240, pip_sizes=None):
     """For each unlabeled row in signals_log.csv, compute hypothetical outcome."""
     from pathlib import Path as _P
-
     if pip_sizes is None:
-        pip_sizes = {
-    "EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01, 
-    "AUDUSD": 0.0001, "USDCAD": 0.0001, "NZDUSD": 0.0001, 
-    "EURGBP": 0.0001, "EURJPY": 0.01, "GBPJPY": 0.01
-}
-
+        pip_sizes = {"EURUSD": 0.0001, "GBPUSD": 0.0001, "USDJPY": 0.01, "AUDUSD": 0.0001, "USDCAD": 0.0001, "NZDUSD": 0.0001, "EURGBP": 0.0001, "EURJPY": 0.01, "GBPJPY": 0.01}
+    
     path = _P("signals_log.csv")
     if not path.exists():
         return
-
+        
     df = pd.read_csv(path, low_memory=False)
     if "traded" not in df.columns:
         df["traded"] = ""
     df["traded"] = df["traded"].astype(object)
-
+    
     if "skip_reason" not in df.columns:
         df["skip_reason"] = ""
     df["skip_reason"] = df["skip_reason"].astype(object)
+    
     if "label" not in df.columns:
         df["label"] = ""
     df["label"] = df["label"].astype(object)
-
+    
     if "label_pnl_pips" not in df.columns:
         df["label_pnl_pips"] = ""
     df["label_pnl_pips"] = df["label_pnl_pips"].astype(object)
 
     candidates = df[(df["buy_ok"] == "Y") | (df["sell_ok"] == "Y")].copy()
     candidates = candidates[candidates["label"].isna() | (candidates["label"] == "") | (candidates["label"] == "flat")]
-    candidates = candidates.head(500)  # cap backfill per cycle to stay inside timeout
+    candidates = candidates.head(500)
 
     if len(candidates) == 0:
         return
@@ -459,21 +455,22 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
             ts = pd.to_datetime(row["ts_utc"], utc=True)
         except Exception:
             continue
+        
         if (now - ts).total_seconds() / 60 < lookahead_min:
             continue
-
+            
         bars = pairs.get(sym)
         if bars is None or len(bars) < 5:
             continue
-
+            
         after = bars[bars.index >= ts]
         if len(after) < 2:
             continue
-
+            
         entry = float(after["Close"].iloc[0])
         pip = pip_sizes.get(sym, 0.0001)
-        tp_pips, sl_pips = get_dynamic_sl_tp(bars, side)
-
+        
+        # --- 1. DETERMINE SIDE FIRST ---
         side = None
         if row["buy_ok"] == "Y" and row["sell_ok"] != "Y":
             side = "BUY"
@@ -483,19 +480,16 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
             mu = float(row.get("meta_up", 0) or 0)
             md = float(row.get("meta_down", 0) or 0)
             side = "BUY" if mu >= md else "SELL"
-
-        # Apply the contrarian flip ONLY after the side is fully determined
-        if side is not None:
-            side = apply_contrarian_logic(sym, side)
-
+            
         if side is None:
             df.at[idx, "label"] = "no_signal"
             updated += 1
             continue
 
-        # --- COUNCIL CHAMPION LOGIC (APPLIED AFTER SIDE IS DETERMINED) ---
-        champ_dna = COUNCIL_STATE["champion"]["dna"]
+        # --- 2. APPLY LIVE LOGIC ---
+        side = apply_contrarian_logic(sym, side)
         
+        champ_dna = COUNCIL_STATE["champion"]["dna"]
         if champ_dna.get("block_pair") == f"{sym}_{side}":
             df.at[idx, "label"] = "blocked_by_council"
             continue
@@ -505,21 +499,17 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
         if champ_dna.get("block_regime") == row.get("regime"):
             df.at[idx, "label"] = "blocked_by_regime"
             continue
-        # -----------------------------------------------------------------
-        # ------------------------------------------------
-        
 
-        if side is None:
-            df.at[idx, "label"] = "no_signal"
-            updated += 1
-            continue
+        # --- 3. CALCULATE DYNAMIC SL/TP NOW THAT SIDE IS KNOWN ---
+        tp_pips, sl_pips = get_dynamic_sl_tp(bars, side)
 
-        window = after.iloc[1:48]  # 4 hours lookahead
+        window = after.iloc[1:48]
         tp_price = entry + tp_pips * pip if side == "BUY" else entry - tp_pips * pip
         sl_price = entry - sl_pips * pip if side == "BUY" else entry + sl_pips * pip
 
         label = "flat"
         pnl_pips = 0.0
+        
         for _, bar in window.iterrows():
             hi = float(bar["High"])
             lo = float(bar["Low"])
@@ -546,8 +536,7 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
         df.at[idx, "label_pnl_pips"] = "%.2f" % pnl_pips
         updated += 1
 
-    # Always write back so new label columns exist even before any labels are set
-    # Mark signals that became trades (cross-ref trades.csv)
+    # Mark traded signals
     try:
         _tp = _P("trades.csv")
         if _tp.exists():
