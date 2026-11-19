@@ -484,13 +484,16 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None): # 4 H1 bars
             md = float(row.get("meta_down", 0) or 0)
             side = "BUY" if mu >= md else "SELL"
 
+        # Apply the contrarian flip ONLY after the side is fully determined
+        if side is not None:
+            side = apply_contrarian_logic(sym, side)
+
         if side is None:
             df.at[idx, "label"] = "no_signal"
             updated += 1
             continue
 
         # --- COUNCIL CHAMPION LOGIC (APPLIED AFTER SIDE IS DETERMINED) ---
-        side = apply_contrarian_logic(sym, side)
         champ_dna = COUNCIL_STATE["champion"]["dna"]
         
         if champ_dna.get("block_pair") == f"{sym}_{side}":
@@ -899,7 +902,6 @@ def main():
         log("  SIGNAL %s %s (Dukascopy close=%.5f) meta=%.3f" % (symbol, side, price, prob))
 
         # --- EXECUTION PATCH: LIVE CONTRARIAN FLIP & COOLDOWN ---
-        side = apply_contrarian_logic(symbol, side)
         if is_on_cooldown(symbol):
             log("  %s is on a 60-minute cooldown. Skipping live trade." % symbol)
             return
