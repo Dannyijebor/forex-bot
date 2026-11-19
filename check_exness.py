@@ -18,34 +18,35 @@ print(f"🔌 Connecting to Exness Demo ({server}) as {login}...")
 client = Tickerall(api_key=api_key)
 
 try:
-    # 1. Connect to the MT5 account
-    account_id = client.connect(
+    # 1. Connect using the correct session method
+    session = client.sessions.start(
         broker="mt5", 
         server=server, 
         account=int(login), 
-        password=password
+        password=password,
+        terminal_type="MOBILE"
     )
-    print(f"✅ Connected! Account ID: {account_id}")
     
-    # 2. Fetch all available symbols
-    print("📥 Downloading broker symbol list...")
-    symbols = client.symbols(account_id)
+    print(f"✅ Connected! Session Object: {session}")
     
-    # 3. Check for our target pairs
-    targets = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
-    found = []
-    
-    print("\n🔍 Searching for our 9 pairs:")
-    for t in targets:
-        # Find any symbol that starts with the pair name (e.g., EURUSDm, EURUSD.raw)
-        matches = [s["name"] for s in symbols if s["name"].startswith(t)]
-        if matches:
-            print(f"  ✅ {t} -> Found as: {matches}")
-            found.append(matches[0]) # Save the first match
-        else:
-            print(f"  ❌ {t} -> NOT FOUND on this account")
-            
-    print(f"\nTotal symbols on account: {len(symbols)}")
-    
+    # 2. Fetch symbols. 
+    # Note: The session object likely holds the account ID. We will try to grab it dynamically.
+    # If this fails, we will see the error in the output.
+    try:
+        symbols = client.symbols(session)
+        print("📥 Successfully fetched symbol list!")
+        
+        targets = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
+        print("\n🔍 Searching for our 9 pairs:")
+        
+        for t in targets:
+            matches = [s["name"] for s in symbols if s["name"].startswith(t)]
+            if matches:
+                print(f"  ✅ {t} -> Found as: {matches}")
+            else:
+                print(f"  ❌ {t} -> NOT FOUND on this account")
+    except Exception as e:
+        print(f"⚠️ Could not fetch symbols directly using session object. Error: {e}")
+        
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"❌ Connection Error: {e}")
