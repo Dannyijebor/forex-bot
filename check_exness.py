@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from tickerall import Tickerall
+import signal_engine_v5
 
 # Load credentials
 load_dotenv()
@@ -10,43 +11,37 @@ server = os.getenv("EXNESS_SERVER")
 login = os.getenv("EXNESS_LOGIN")
 password = os.getenv("EXNESS_PASSWORD")
 
-if not all([api_key, server, login, password]):
-    print("❌ Missing credentials in .env file.")
-    exit()
-
-print(f"🔌 Connecting to Exness Demo ({server}) as {login}...")
+print(f"🔌 Connecting to Exness Demo ({server})...")
 client = Tickerall(api_key=api_key)
 
 try:
-    # 1. Connect using the correct session method
+    # 1. Connect
     session = client.sessions.start(
-        broker="mt5", 
-        server=server, 
-        account=int(login), 
-        password=password,
-        terminal_type="MOBILE"
+        broker="mt5", server=server, account=int(login), 
+        password=password, terminal_type="MOBILE"
     )
+    account_id = session.account_id
+    print(f"✅ Connected! Account ID: {account_id}\n")
     
-    print(f"✅ Connected! Session Object: {session}")
+    # 2. Force the updated symbol list (with 'm' suffix) into the signal engine
+    signal_engine_v5.TICKERALL_SYMBOLS.update({
+        "AUDUSD": "AUDUSDm", "USDCAD": "USDCADm", "NZDUSD": "NZDUSDm",
+        "EURGBP": "EURGBPm", "EURJPY": "EURJPYm", "GBPJPY": "GBPJPYm"
+    })
     
-    # 2. Fetch symbols. 
-    # Note: The session object likely holds the account ID. We will try to grab it dynamically.
-    # If this fails, we will see the error in the output.
-    try:
-        symbols = client.symbols(session)
-        print("📥 Successfully fetched symbol list!")
-        
-        targets = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
-        print("\n🔍 Searching for our 9 pairs:")
-        
-        for t in targets:
-            matches = [s["name"] for s in symbols if s["name"].startswith(t)]
-            if matches:
-                print(f"  ✅ {t} -> Found as: {matches}")
+    targets = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
+    
+    print("🔍 Testing H1 Bar Fetch for all 9 pairs:")
+    for t in targets:
+        try:
+            # We use the exact function auto_trader uses to get data
+            df = signal_engine_v5.fetch_pair_live(client, account_id, t, count=10)
+            if df is not None and len(df) > 0:
+                print(f"  ✅ {t} -> SUCCESS! (Latest Close: {df.iloc[-1]['Close']})")
             else:
-                print(f"  ❌ {t} -> NOT FOUND on this account")
-    except Exception as e:
-        print(f"⚠️ Could not fetch symbols directly using session object. Error: {e}")
-        
+                print(f"  ❌ {t} -> FAILED (Symbol exists but no data returned)")
+        except Exception as e:
+            print(f"  ❌ {t} -> FAILED (Broker does not recognize this symbol)")
+
 except Exception as e:
     print(f"❌ Connection Error: {e}")
