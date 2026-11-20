@@ -1,3 +1,16 @@
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(message)s',
+    handlers=[
+        logging.FileHandler("auto_trader.log"),
+        logging.StreamHandler()
+    ]
+)
+# Override print to log to file and console
+print = logging.info
+
 """auto_trader.py — V5.1: live MT5 data + fill-price stops."""
 import os, sys, time
 from datetime import datetime, timezone, timedelta
