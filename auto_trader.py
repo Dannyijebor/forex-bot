@@ -930,6 +930,28 @@ def main():
             max_sl=getattr(cfg, "MAX_SL_PIPS", 15.0),
         )
         log("      Fill=%.5f  Vol=%.2f  TP=%.5f  SL=%.5f" % (fill_price, volume, tp, sl))
+        
+        # --- NEW COOLDOWN PATCH: LOG TRADE IMMEDIATELY ---
+        try:
+            import os
+            import pandas as pd
+            from datetime import datetime, timezone
+            trade_file = "trades.csv"
+            trade_data = {
+                "ticket": [str(result.ticket)],
+                "symbol": [symbol],
+                "opened_utc": [datetime.now(timezone.utc).isoformat()],
+                "pnl_usd": [None]
+            }
+            new_df = pd.DataFrame(trade_data)
+            if os.path.exists(trade_file):
+                new_df.to_csv(trade_file, mode='a', header=False, index=False)
+            else:
+                new_df.to_csv(trade_file, mode='w', header=True, index=False)
+            log("  Logged new trade to trades.csv (Cooldown started)")
+        except Exception as e:
+            log("  Failed to log trade to trades.csv: %s" % e)
+        # --------------------------------------------------
 
         try:
             client.positions.modify(
