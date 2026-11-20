@@ -366,8 +366,10 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         meta_thr_up = max(0.20, meta_thr_up + _a["bandit"])
         meta_thr_down = max(0.20, meta_thr_down + _a["bandit"])
         if _a["opt_threshold"] is not None:
-            meta_thr_up = _a["opt_threshold"]
-            meta_thr_down = _a["opt_threshold"]
+            # Use the adaptive optimal threshold, but STILL respect the Council penalty
+            # and the current market regime adjustments.
+            meta_thr_up = max(0.20, _a["opt_threshold"] + adj["meta"] + penalty)
+            meta_thr_down = max(0.20, _a["opt_threshold"] + adj["meta"] + penalty)
 
         # Update thr_up/thr_down so the log shows the ADJUSTED values
         thr_up = meta_thr_up
