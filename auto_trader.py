@@ -39,7 +39,7 @@ LAST_BAR_FILE = Path(".last_traded_bar")
 
 def log(msg):
     line = "[%s] %s" % (datetime.now(timezone.utc).isoformat(), msg)
-    print(line, flush=True)
+    print(line)
 
 
 def notify(title, content):
@@ -935,12 +935,11 @@ def main():
         try:
             import os
             import pandas as pd
-            from datetime import datetime, timezone
             trade_file = "trades.csv"
             trade_data = {
                 "ticket": [str(result.ticket)],
                 "symbol": [symbol],
-                "opened_utc": [datetime.now(timezone.utc).isoformat()],
+                "opened_utc": [pd.Timestamp.utcnow().isoformat()],
                 "pnl_usd": [None]
             }
             new_df = pd.DataFrame(trade_data)
