@@ -940,6 +940,30 @@ def main():
 
 
         try:
+            # --- NEW: LIVE SPREAD FILTER ---
+            max_allowed_spread = getattr(cfg, "MAX_SPREAD_PIPS", 2.0)
+            try:
+                # Attempt to get live quote from Tickerall API
+                quote = None
+                if hasattr(client, 'quotes') and hasattr(client.quotes, 'get'):
+                    quote = client.quotes.get(symbol=tickerall_symbol)
+                elif hasattr(client, 'symbols') and hasattr(client.symbols, 'get'):
+                    quote = client.symbols.get(symbol=tickerall_symbol)
+                
+                if quote:
+                    live_ask = float(getattr(quote, 'ask', 0))
+                    live_bid = float(getattr(quote, 'bid', 0))
+                    if live_ask > 0 and live_bid > 0:
+                        current_spread = (live_ask - live_bid) / pip
+                        if current_spread > max_allowed_spread:
+                            log("  🛑 SPREAD BLOCK: Spread is %.2f pips (Max %.2f). Skipping %s." % (current_spread, max_allowed_spread, symbol))
+                            return
+                        else:
+                            log("  Spread Check: %.2f pips (OK)" % current_spread)
+            except Exception as e:
+                log("  ⚠️ Spread check warning: %s. Proceeding carefully." % e)
+            # --------------------------------
+
             # CORRELATION GUARD
 
             open_symbols = [p.symbol for p in open_positions]

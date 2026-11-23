@@ -137,3 +137,6 @@ MODEL_AWARE_EXIT_MIN_AGE_MIN = 2      # don't exit in first N minutes
 MODEL_AWARE_EXIT_MAX_LOSS_USD = 8.0   # if loss > this, let SL handle it
 MODEL_AWARE_EXIT_META_BUFFER = 0.05   # meta must drop below (threshold - buffer)
 
+
+# Maximum allowed spread in pips to enter a trade
+MAX_SPREAD_PIPS = 2.0
