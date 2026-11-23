@@ -378,6 +378,41 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         buy_ok = (p_up > p_thresh) and (m_up > meta_thr_up)
         sell_ok = (p_down > p_thresh) and (m_down > meta_thr_down)
 
+        # --- NEW: MACRO SHIELD (Institutional Rules) ---
+        try:
+            # Get the most recent macro row
+            last_macro = df.iloc[-1]
+            
+            # Safe extraction (defaults to 0 if data is missing/NaN)
+            vix_lvl = float(last_macro.get("vix_level", 0)) if not pd.isna(last_macro.get("vix_level", 0)) else 0
+            dxy_ret = float(last_macro.get("dxy_ret_1", 0)) if not pd.isna(last_macro.get("dxy_ret_1", 0)) else 0
+            us10y_ret = float(last_macro.get("us10y_ret_1", 0)) if not pd.isna(last_macro.get("us10y_ret_1", 0)) else 0
+
+            # Rule 1: VIX Panic
+            if vix_lvl > 30.0:
+                if buy_ok or sell_ok:
+                    print(f"  🛑 MACRO SHIELD: VIX is {vix_lvl:.1f} (Panic). Blocking all trades for {symbol}.")
+                buy_ok = False
+                sell_ok = False
+
+            # Rule 2: DXY & Yield Gravity (For EURUSD and GBPUSD)
+            if symbol in ["EURUSD", "GBPUSD"]:
+                # If USD is strengthening (DXY up or Yields up), block BUYs
+                if dxy_ret > 0 or us10y_ret > 0:
+                    if buy_ok:
+                        print(f"  🛑 MACRO SHIELD: USD is strengthening (DXY:{dxy_ret:.2f}, 10Y:{us10y_ret:.2f}). Blocking BUY on {symbol}.")
+                    buy_ok = False
+                    
+                # If USD is weakening (DXY down), block SELLs
+                elif dxy_ret < 0:
+                    if sell_ok:
+                        print(f"  🛑 MACRO SHIELD: USD is weakening (DXY:{dxy_ret:.2f}). Blocking SELL on {symbol}.")
+                    sell_ok = False
+
+        except Exception as macro_err:
+            print(f"  ⚠️ Macro Shield Warning: {macro_err}")
+        # ------------------------------------------------
+
         return {
             "symbol": symbol,
             "primary_up": float(p_up),
