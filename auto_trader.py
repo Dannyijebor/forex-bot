@@ -345,22 +345,30 @@ TRADE_COOLDOWN_MINUTES = 60
 
 def is_on_cooldown(symbol):
     try:
-        t = pd.read_csv("trades.csv")
-        if len(t) == 0: return False
-        t['opened_utc'] = pd.to_datetime(t['opened_utc'], utc=True)
-        sym_trades = t[t['symbol'] == symbol].sort_values('opened_utc')
-        if len(sym_trades) == 0: return False
+        import os
+        from datetime import datetime, timezone
+        if not os.path.exists("trades.csv"): return False
         
-        last_trade_time = sym_trades.iloc[-1]['opened_utc']
-        now = pd.Timestamp.utcnow()
-        mins_since = (now - last_trade_time).total_seconds() / 60
-        
-        if mins_since < TRADE_COOLDOWN_MINUTES:
-            return True
+        with open("trades.csv", "r") as f:
+            lines = f.readlines()
+            
+        for line in reversed(lines):
+            if symbol in line:
+                import re
+                match = re.search(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', line)
+                if match:
+                    trade_time = datetime.fromisoformat(match.group(1)).replace(tzinfo=timezone.utc)
+                    now = datetime.now(timezone.utc)
+                    mins_since = (now - trade_time).total_seconds() / 60
+                    if mins_since < TRADE_COOLDOWN_MINUTES:
+                        return True
+                    else:
+                        return False
         return False
-    except Exception:
+    except Exception as e:
+        print("Cooldown check error: %s" % e)
         return False
-# -------------------------------------
+
 
 def compute_adaptive_boost(client=None, aid=None):
     """Read most recent closed trades from Exness (newest-first from API)."""
