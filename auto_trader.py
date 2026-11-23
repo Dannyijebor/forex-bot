@@ -875,6 +875,28 @@ def main():
             log("  Session died before account fetch — skipping cycle (will retry).")
             return
         equity = acct.account.equity
+        # --- NEW: IRON VAULT (DAILY DRAWDOWN CIRCUIT BREAKER) ---
+        try:
+            import os, json
+            from datetime import datetime, timezone
+            vault_file = 'vault_state.json'
+            if os.path.exists(vault_file):
+                with open(vault_file, 'r') as f: vault = json.load(f)
+            else: vault = {'start_balance': equity, 'date': datetime.now(timezone.utc).strftime('%Y-%m-%d')}
+            today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            if vault['date'] != today_str:
+                vault['start_balance'] = equity
+                vault['date'] = today_str
+                with open(vault_file, 'w') as f: json.dump(vault, f)
+            drawdown_pct = ((vault['start_balance'] - equity) / vault['start_balance']) * 100
+            if drawdown_pct >= 5.0:
+                log('  🛑 IRON VAULT TRIGGERED: Daily drawdown is %.2f%% (Max 5%%). Shutting down for the day.' % drawdown_pct)
+                return
+            else:
+                log('  Iron Vault: Daily DD is %.2f%% (Safe).' % drawdown_pct)
+        except Exception as vault_err:
+            log('  Vault check warning: %s' % vault_err)
+        # --------------------------------------------------------
         open_positions = acct.positions or []
         # --- NEW: BREAK-EVEN & TRAILING STOP ENGINE ---
         for p in open_positions:
