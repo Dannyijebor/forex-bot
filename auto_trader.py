@@ -876,6 +876,47 @@ def main():
             return
         equity = acct.account.equity
         open_positions = acct.positions or []
+        # --- NEW: BREAK-EVEN & TRAILING STOP ENGINE ---
+        for p in open_positions:
+            sym_str = 'Unknown'
+            try:
+                sym_str = str(getattr(p, 'symbol', ''))
+                p_pip = 0.01 if 'JPY' in sym_str else 0.0001
+                p_type = str(getattr(p, 'type', '')).lower()
+                is_buy = p_type in ['buy', '0']
+                entry = float(getattr(p, 'price_open', 0))
+                current = float(getattr(p, 'price_current', 0))
+                sl = float(getattr(p, 'stop_loss', 0) or 0)
+                tp = float(getattr(p, 'take_profit', 0) or 0)
+                t_ticket = int(getattr(p, 'ticket', 0))
+                
+                if entry > 0 and current > 0:
+                    profit_pips = ((current - entry) / p_pip) if is_buy else ((entry - current) / p_pip)
+                    
+                    # BREAK-EVEN LOGIC (At +10 pips)
+                    if profit_pips >= 10.0:
+                        if is_buy and (sl < entry or sl == 0):
+                            client.positions.modify(aid, t_ticket, stop_loss=entry + (0.5 * p_pip), take_profit=tp)
+                            log('  🛡️ BREAK-EVEN: Moved SL to entry for %s.' % sym_str)
+                        elif not is_buy and (sl > entry or sl == 0):
+                            client.positions.modify(aid, t_ticket, stop_loss=entry - (0.5 * p_pip), take_profit=tp)
+                            log('  🛡️ BREAK-EVEN: Moved SL to entry for %s.' % sym_str)
+                    
+                    # TRAILING STOP LOGIC (At +20 pips, trail by 10 pips)
+                    if profit_pips >= 20.0:
+                        if is_buy:
+                            new_sl = current - (10.0 * p_pip)
+                            if new_sl > sl and new_sl > entry:
+                                client.positions.modify(aid, t_ticket, stop_loss=new_sl, take_profit=tp)
+                                log('  📈 TRAILING: Locked in profit for %s.' % sym_str)
+                        else:
+                            new_sl = current + (10.0 * p_pip)
+                            if (new_sl < sl or sl == 0) and new_sl < entry:
+                                client.positions.modify(aid, t_ticket, stop_loss=new_sl, take_profit=tp)
+                                log('  📈 TRAILING: Locked in profit for %s.' % sym_str)
+            except Exception as trail_err:
+                log('  Trailing stop error for %s: %s' % (sym_str, trail_err))
+        # ------------------------------------------------
         log("  Equity $%.2f  Positions %d" % (equity, len(open_positions)))
 
         manage_positions(client, aid, open_positions, results)
