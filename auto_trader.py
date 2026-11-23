@@ -878,7 +878,6 @@ def main():
         # --- NEW: IRON VAULT (DAILY DRAWDOWN CIRCUIT BREAKER) ---
         try:
             import os, json
-            from datetime import datetime, timezone
             vault_file = 'vault_state.json'
             if os.path.exists(vault_file):
                 with open(vault_file, 'r') as f: vault = json.load(f)
