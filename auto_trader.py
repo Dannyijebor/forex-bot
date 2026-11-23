@@ -924,7 +924,9 @@ def main():
         # 8. Size and place
         volume = size_by_confidence(prob, base=cfg.BASE_VOLUME)
         max_risk_usd = equity * 0.02
-        max_lots_by_risk = max_risk_usd / (10.0 * 10.0)
+        # DYNAMIC RISK SIZING BASED ON ACTUAL ATR
+        dynamic_sl_pips = max(10.0, atr_frac / pip * 1.5)
+        max_lots_by_risk = max_risk_usd / (dynamic_sl_pips * 10.0)
         volume = round(min(volume, max_lots_by_risk), 2)
         volume = max(volume, cfg.LOT_MIN)
 
@@ -938,6 +940,16 @@ def main():
 
 
         try:
+            # CORRELATION GUARD
+
+            open_symbols = [p.symbol for p in open_positions]
+
+            if symbol in ['EURUSD', 'GBPUSD'] and any(s in open_symbols for s in ['EURUSD', 'GBPUSD']):
+
+                log('  🛑 CORRELATION BLOCK: Already holding a major USD pair. Skipping %s.' % symbol)
+
+                return
+
             result = client.orders.place(
                 aid, type="market", symbol=tickerall_symbol, side=side,
                 volume=volume,
