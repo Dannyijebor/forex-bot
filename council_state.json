@@ -62,7 +62,7 @@
                 "flip_buy": 1,
                 "block_hour": 4
             },
-            "sim_pnl": 0.0
+            "sim_pnl": 0
         },
         {
             "id": "council_mutation_1795177078_1",
@@ -71,7 +71,7 @@
                 "thresh": 0.62,
                 "flip_buy": 1
             },
-            "sim_pnl": 0.0
+            "sim_pnl": 0
         },
         {
             "id": "council_mutation_1795177078_10",
@@ -80,7 +80,7 @@
                 "thresh": 0.8,
                 "flip_buy": 0
             },
-            "sim_pnl": 0.0
+            "sim_pnl": 0
         },
         {
             "id": "council_mutation_1795177078_11",
@@ -89,7 +89,7 @@
                 "thresh": 0.82,
                 "flip_buy": 1
             },
-            "sim_pnl": 0.0
+            "sim_pnl": 0
         },
         {
             "id": "council_mutation_1795177078_12",
@@ -98,11 +98,11 @@
                 "thresh": 0.84,
                 "flip_buy": 0
             },
-            "sim_pnl": 0.0
+            "sim_pnl": 0
         },
         {
-            "id": "overseer_breed_1795382554_0",
-            "birth": "2026-11-22T21:22:34.924960+00:00",
+            "id": "overseer_breed_1795462460_0",
+            "birth": "2026-11-23T19:34:20.899703+00:00",
             "dna": {
                 "thresh": 0.65,
                 "flip_buy": 1,
@@ -111,8 +111,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_1",
-            "birth": "2026-11-22T21:22:34.924969+00:00",
+            "id": "overseer_breed_1795462460_1",
+            "birth": "2026-11-23T19:34:20.899714+00:00",
             "dna": {
                 "thresh": 0.6599999999999999,
                 "flip_buy": 1
@@ -120,8 +120,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_2",
-            "birth": "2026-11-22T21:22:34.924972+00:00",
+            "id": "overseer_breed_1795462460_2",
+            "birth": "2026-11-23T19:34:20.899717+00:00",
             "dna": {
                 "thresh": 0.7,
                 "flip_buy": 1
@@ -129,8 +129,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_3",
-            "birth": "2026-11-22T21:22:34.924974+00:00",
+            "id": "overseer_breed_1795462460_3",
+            "birth": "2026-11-23T19:34:20.899720+00:00",
             "dna": {
                 "thresh": 0.65,
                 "flip_buy": 1,
@@ -139,8 +139,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_4",
-            "birth": "2026-11-22T21:22:34.924976+00:00",
+            "id": "overseer_breed_1795462460_4",
+            "birth": "2026-11-23T19:34:20.899722+00:00",
             "dna": {
                 "thresh": 0.74,
                 "flip_buy": 1
@@ -148,8 +148,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_5",
-            "birth": "2026-11-22T21:22:34.924979+00:00",
+            "id": "overseer_breed_1795462460_5",
+            "birth": "2026-11-23T19:34:20.899724+00:00",
             "dna": {
                 "thresh": 0.65,
                 "flip_buy": 1,
@@ -158,8 +158,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_6",
-            "birth": "2026-11-22T21:22:34.924981+00:00",
+            "id": "overseer_breed_1795462460_6",
+            "birth": "2026-11-23T19:34:20.899726+00:00",
             "dna": {
                 "thresh": 0.62,
                 "flip_buy": 1
@@ -167,8 +167,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_7",
-            "birth": "2026-11-22T21:22:34.924983+00:00",
+            "id": "overseer_breed_1795462460_7",
+            "birth": "2026-11-23T19:34:20.899728+00:00",
             "dna": {
                 "thresh": 0.8,
                 "flip_buy": 0
@@ -176,8 +176,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_8",
-            "birth": "2026-11-22T21:22:34.924984+00:00",
+            "id": "overseer_breed_1795462460_8",
+            "birth": "2026-11-23T19:34:20.899730+00:00",
             "dna": {
                 "thresh": 0.82,
                 "flip_buy": 1
@@ -185,8 +185,8 @@
             "sim_pnl": 0.0
         },
         {
-            "id": "overseer_breed_1795382554_9",
-            "birth": "2026-11-22T21:22:34.924987+00:00",
+            "id": "overseer_breed_1795462460_9",
+            "birth": "2026-11-23T19:34:20.899732+00:00",
             "dna": {
                 "thresh": 0.84,
                 "flip_buy": 0
