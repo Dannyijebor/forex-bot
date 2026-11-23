@@ -267,12 +267,17 @@ def get_dynamic_sl_tp(df, side):
     # If ATR is small (quiet market), fallback to a minimum of 40 pips TP / 25 pips SL.
     return max(40.0, atr_pips * 3.0), max(25.0, atr_pips * 1.5)
 
-def apply_contrarian_logic(symbol, side):
+def apply_contrarian_logic(symbol, side, regime="normal"):
     # COUNCIL CHAMPION LOGIC
     champ_dna = COUNCIL_STATE["champion"]["dna"]
     flip_allowed = champ_dna.get("flip_buy", 1)
 
     if symbol in CONTRARIAN_BUY_PAIRS and side == "BUY" and flip_allowed == 1:
+        # SMART COUNCIL OVERRIDE: Don't fight the trend
+        if regime == "trending":
+            print(f"  🛡️ COUNCIL OVERRIDE: Market is TRENDING. Refusing to flip BUY on {symbol}.")
+            return side # Keep the BUY!
+            
         print(f"  ⚠️ CONTRARIAN FLIP: Primary model wanted BUY on {symbol}. Flipping to SELL.")
         return "SELL"
     return side
@@ -508,7 +513,7 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None):
             continue
 
         # --- 2. APPLY LIVE LOGIC ---
-        side = apply_contrarian_logic(sym, side)
+        side = apply_contrarian_logic(sym, side, regime=row.get("regime", "normal"))
         
         champ_dna = COUNCIL_STATE["champion"]["dna"]
         if champ_dna.get("block_pair") == f"{sym}_{side}":
