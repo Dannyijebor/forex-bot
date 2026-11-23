@@ -513,7 +513,21 @@ def label_signals(pairs, lookahead_min=240, pip_sizes=None):
             continue
 
         # --- 2. APPLY LIVE LOGIC ---
+        original_side = side
         side = apply_contrarian_logic(sym, side, regime=row.get("regime", "normal"))
+        # --- NEW: FLIP VALIDATION ---
+        if side != original_side:
+            if side == 'SELL' and row.get('sell_ok') != 'Y':
+                print(f'  🛑 FLIP REJECTED: {sym} flipped to SELL, but Meta-model did not approve a SELL. Skipping.')
+                df.at[idx, 'label'] = 'flip_rejected'
+                updated += 1
+                continue
+            elif side == 'BUY' and row.get('buy_ok') != 'Y':
+                print(f'  🛑 FLIP REJECTED: {sym} flipped to BUY, but Meta-model did not approve a BUY. Skipping.')
+                df.at[idx, 'label'] = 'flip_rejected'
+                updated += 1
+                continue
+        # ---------------------------
         
         champ_dna = COUNCIL_STATE["champion"]["dna"]
         if champ_dna.get("block_pair") == f"{sym}_{side}":
@@ -1016,3 +1030,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
