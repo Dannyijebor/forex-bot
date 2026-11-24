@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-11-24T14:51:20.237966+00:00",
-  "n_labeled": 13658,
+  "updated_utc": "2026-11-24T14:53:11.763702+00:00",
+  "n_labeled": 13659,
   "calibration": {
     "EURUSD": [
       {
@@ -43,30 +43,30 @@
       {
         "lo": 0.309,
         "hi": 0.749,
-        "n": 927,
+        "n": 928,
         "win_rate": 0.553,
-        "avg_pips": 4.21
+        "avg_pips": 4.18
       },
       {
         "lo": 0.749,
-        "hi": 0.773,
-        "n": 920,
-        "win_rate": 0.596,
-        "avg_pips": 6.24
+        "hi": 0.772,
+        "n": 919,
+        "win_rate": 0.595,
+        "avg_pips": 6.23
       },
       {
         "lo": 0.773,
         "hi": 0.793,
-        "n": 927,
+        "n": 923,
         "win_rate": 0.535,
-        "avg_pips": 5.55
+        "avg_pips": 5.52
       },
       {
         "lo": 0.793,
         "hi": 0.811,
-        "n": 919,
-        "win_rate": 0.376,
-        "avg_pips": 1.57
+        "n": 924,
+        "win_rate": 0.378,
+        "avg_pips": 1.63
       },
       {
         "lo": 0.811,
@@ -145,9 +145,9 @@
     },
     "GBPUSD|normal": {
       "weight": 1.098,
-      "n": 3820,
+      "n": 3821,
       "win_rate": 0.508,
-      "avg_pips": 4.9,
+      "avg_pips": 4.89,
       "reason": "positive_ev"
     },
     "GBPUSD|quiet": {
@@ -208,8 +208,8 @@
     },
     "GBPUSD": {
       "threshold": 0.6,
-      "ev_pips": 5.14,
-      "n_passing": 4480
+      "ev_pips": 5.13,
+      "n_passing": 4481
     },
     "USDJPY": {
       "threshold": 0.76,
