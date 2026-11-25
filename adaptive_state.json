@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-11-25T17:35:05.736343+00:00",
-  "n_labeled": 13766,
+  "updated_utc": "2026-11-25T17:38:36.991939+00:00",
+  "n_labeled": 13767,
   "calibration": {
     "EURUSD": [
       {
@@ -13,28 +13,28 @@
       {
         "lo": 0.815,
         "hi": 0.834,
-        "n": 816,
-        "win_rate": 0.583,
-        "avg_pips": 6.04
+        "n": 810,
+        "win_rate": 0.58,
+        "avg_pips": 5.95
       },
       {
         "lo": 0.834,
         "hi": 0.85,
-        "n": 808,
-        "win_rate": 0.446,
-        "avg_pips": 3.0
+        "n": 815,
+        "win_rate": 0.449,
+        "avg_pips": 3.07
       },
       {
         "lo": 0.85,
         "hi": 0.872,
-        "n": 812,
-        "win_rate": 0.43,
-        "avg_pips": 2.75
+        "n": 809,
+        "win_rate": 0.429,
+        "avg_pips": 2.73
       },
       {
         "lo": 0.872,
         "hi": 0.992,
-        "n": 810,
+        "n": 813,
         "win_rate": 0.525,
         "avg_pips": 6.41
       }
@@ -117,9 +117,9 @@
   "bandit": {
     "EURUSD|normal": {
       "weight": 1.104,
-      "n": 3091,
+      "n": 3092,
       "win_rate": 0.512,
-      "avg_pips": 5.22,
+      "avg_pips": 5.21,
       "reason": "positive_ev"
     },
     "EURUSD|quiet": {
@@ -203,8 +203,8 @@
   "optimal_thresholds": {
     "EURUSD": {
       "threshold": 0.52,
-      "ev_pips": 5.19,
-      "n_passing": 3704
+      "ev_pips": 5.18,
+      "n_passing": 3705
     },
     "GBPUSD": {
       "threshold": 0.64,
