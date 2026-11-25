@@ -378,6 +378,14 @@ def score_symbol(symbol, primary_df, cross1_df, cross2_df, cross_daily, boost=0.
         buy_ok = (p_up > p_thresh) and (m_up > meta_thr_up)
         sell_ok = (p_down > p_thresh) and (m_down > meta_thr_down)
 
+        # --- NEW: VOLATILE REGIME BAN ---
+        if regime == 'volatile':
+            if buy_ok or sell_ok:
+                print(f"  🛡️ REGIME BAN: Market is volatile. Blocking trade for {symbol}.")
+            buy_ok = False
+            sell_ok = False
+        # --------------------------------
+
         # --- NEW: MACRO SHIELD (Institutional Rules) ---
         try:
             # Get the most recent macro row

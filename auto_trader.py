@@ -837,6 +837,8 @@ def main():
             log("  No scoring results.")
             return
 
+        # SNIPER MODE: Only log the best trade, ignore the rest
+        best_trade = pick_best(results)
         for r in results:
             buy_m = "Y" if r["buy_qualifies"] else "n"
             sell_m = "Y" if r["sell_qualifies"] else "n"

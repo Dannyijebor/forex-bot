@@ -2,7 +2,7 @@
     "champion": {
         "id": "default_live",
         "dna": {
-            "thresh": 0.5,
+            "thresh": 0.6,
             "flip_buy": 0
         }
     },
