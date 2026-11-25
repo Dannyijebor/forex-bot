@@ -2,8 +2,8 @@
     "champion": {
         "id": "default_live",
         "dna": {
-            "thresh": 0.55,
-            "flip_buy": 1
+            "thresh": 0.5,
+            "flip_buy": 0
         }
     },
     "challengers": [
